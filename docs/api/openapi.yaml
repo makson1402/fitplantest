@@ -1,0 +1,1795 @@
+openapi: 3.1.0
+info:
+  title: FitPlan Pro API
+  version: 1.0.0
+  description: |
+    Contract between the mobile app and the backend (task D-03). Frozen at gate G1; changes go through a
+    change request. The backend must reproduce this document (checked in CI, task B-28) and the mobile
+    client is generated from it.
+
+    Conventions
+    - Base path `/api/v1`. JSON everywhere except the photo upload (multipart) and report export.
+    - Authentication: `Authorization: Bearer <access token>`. Access token lifetime 15 minutes, refresh token 30 days with rotation (reuse of a rotated token revokes its whole family).
+    - Dates are ISO 8601. `date` = `YYYY-MM-DD`; timestamps are UTC with `Z`.
+    - Every error uses the `Error` schema. Validation errors are HTTP 422 with one `details` entry per field.
+    - A user can only read and write their own rows. Another user's id gives 404, never 403.
+    - Lists are paginated with `limit` (default 20, max 100) and `offset`.
+    - `x-requirements` on an operation lists the requirement IDs from docs/requirements.md it implements.
+    - Business rules and numbers live in docs/algorithms.md; field limits in docs/database/schema_postgres.sql.
+servers:
+  - url: /api/v1
+security:
+  - bearerAuth: []
+tags:
+  - {name: meta}
+  - {name: auth}
+  - {name: account}
+  - {name: reference}
+  - {name: library}
+  - {name: training}
+  - {name: diet}
+  - {name: schedule}
+  - {name: workouts}
+  - {name: nutrition}
+  - {name: analytics}
+  - {name: sync}
+
+paths:
+  /health:
+    get:
+      tags: [meta]
+      operationId: getHealth
+      summary: Liveness and dependency status
+      security: []
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/Health'}}}}
+
+  # ------------------------------------------------------------------ auth
+  /auth/register:
+    post:
+      tags: [auth]
+      operationId: register
+      summary: Create an account with email and password
+      x-requirements: [FR-U1]
+      security: []
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/RegisterRequest'}}}}
+      responses:
+        '201': {description: Account created and signed in, content: {application/json: {schema: {$ref: '#/components/schemas/TokenPair'}}}}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/ValidationError'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+  /auth/login:
+    post:
+      tags: [auth]
+      operationId: login
+      summary: Sign in with email and password
+      x-requirements: [FR-U2]
+      security: []
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/LoginRequest'}}}}
+      responses:
+        '200': {description: Signed in, content: {application/json: {schema: {$ref: '#/components/schemas/TokenPair'}}}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '422': {$ref: '#/components/responses/ValidationError'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+  /auth/refresh:
+    post:
+      tags: [auth]
+      operationId: refreshToken
+      summary: Exchange a refresh token for a new token pair (rotation)
+      x-requirements: [FR-U2]
+      security: []
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/RefreshRequest'}}}}
+      responses:
+        '200': {description: New token pair, content: {application/json: {schema: {$ref: '#/components/schemas/TokenPair'}}}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+  /auth/logout:
+    post:
+      tags: [auth]
+      operationId: logout
+      summary: Revoke the refresh token family
+      x-requirements: [FR-U2]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/RefreshRequest'}}}}
+      responses:
+        '204': {description: Signed out}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+  /auth/password/forgot:
+    post:
+      tags: [auth]
+      operationId: forgotPassword
+      summary: Send a reset link by email
+      description: Always answers 202, whether or not the email exists (no user enumeration).
+      x-requirements: [FR-U3]
+      security: []
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ForgotPasswordRequest'}}}}
+      responses:
+        '202': {description: Accepted}
+        '422': {$ref: '#/components/responses/ValidationError'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+  /auth/password/reset:
+    post:
+      tags: [auth]
+      operationId: resetPassword
+      summary: Set a new password with the emailed token
+      description: The token is single use and expires after 1 hour. All refresh tokens of the user are revoked.
+      x-requirements: [FR-U3]
+      security: []
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ResetPasswordRequest'}}}}
+      responses:
+        '204': {description: Password changed}
+        '400': {description: Token invalid or expired, content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '422': {$ref: '#/components/responses/ValidationError'}
+  /auth/google:
+    post:
+      tags: [auth]
+      operationId: signInWithGoogle
+      summary: Sign in or sign up with a Google ID token
+      description: The server verifies the token. An existing account with the same verified email is linked, not duplicated.
+      x-requirements: [FR-U8]
+      security: []
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/OAuthRequest'}}}}
+      responses:
+        '200': {description: Signed in, content: {application/json: {schema: {$ref: '#/components/schemas/TokenPair'}}}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+  /auth/apple:
+    post:
+      tags: [auth]
+      operationId: signInWithApple
+      summary: Sign in or sign up with an Apple identity token
+      x-requirements: [FR-U8]
+      security: []
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/OAuthRequest'}}}}
+      responses:
+        '200': {description: Signed in, content: {application/json: {schema: {$ref: '#/components/schemas/TokenPair'}}}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+
+  # ------------------------------------------------------------------ account
+  /users/me:
+    get:
+      tags: [account]
+      operationId: getMe
+      summary: Current user
+      x-requirements: [FR-U2]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/User'}}}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+    patch:
+      tags: [account]
+      operationId: updateMe
+      summary: Update name, surname or time zone
+      x-requirements: [FR-U4]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/UserUpdate'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/User'}}}}
+        '422': {$ref: '#/components/responses/ValidationError'}
+  /users/me/delete:
+    post:
+      tags: [account]
+      operationId: deleteAccount
+      summary: Delete the account with all related data
+      description: Removes rows in PostgreSQL, documents in MongoDB and photo files. Not reversible.
+      x-requirements: [FR-U5]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/DeleteAccountRequest'}}}}
+      responses:
+        '204': {description: Deleted}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '422': {$ref: '#/components/responses/ValidationError'}
+  /users/me/email:
+    post:
+      tags: [account]
+      operationId: changeEmail
+      summary: Change the email (current password required)
+      x-requirements: [FR-U4]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ChangeEmailRequest'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/User'}}}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/ValidationError'}
+  /users/me/password:
+    post:
+      tags: [account]
+      operationId: changePassword
+      summary: Change the password (current password required)
+      x-requirements: [FR-U4]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ChangePasswordRequest'}}}}
+      responses:
+        '204': {description: Changed}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '422': {$ref: '#/components/responses/ValidationError'}
+  /users/me/profile:
+    get:
+      tags: [account]
+      operationId: getProfile
+      summary: Biometric profile
+      x-requirements: [FR-U6]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/Profile'}}}}
+        '404': {$ref: '#/components/responses/NotFound'}
+    put:
+      tags: [account]
+      operationId: putProfile
+      summary: Create or replace the biometric profile
+      description: Validates ranges (algorithms.md section 0) and recomputes TDEE.
+      x-requirements: [FR-U6, FR-U7, FR-P4]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ProfileInput'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/Profile'}}}}
+        '422': {$ref: '#/components/responses/ValidationError'}
+  /users/me/injuries:
+    get:
+      tags: [account]
+      operationId: listInjuries
+      summary: Injuries and physical limitations
+      x-requirements: [FR-U6]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {type: array, items: {$ref: '#/components/schemas/Injury'}}}}}
+    post:
+      tags: [account]
+      operationId: createInjury
+      summary: Add an injury
+      x-requirements: [FR-U6]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/InjuryInput'}}}}
+      responses:
+        '201': {description: Created, content: {application/json: {schema: {$ref: '#/components/schemas/Injury'}}}}
+        '422': {$ref: '#/components/responses/ValidationError'}
+  /users/me/injuries/{id}:
+    parameters: [{$ref: '#/components/parameters/Id'}]
+    patch:
+      tags: [account]
+      operationId: updateInjury
+      summary: Update an injury (for example mark it healed)
+      x-requirements: [FR-U6]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/InjuryUpdate'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/Injury'}}}}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '422': {$ref: '#/components/responses/ValidationError'}
+    delete:
+      tags: [account]
+      operationId: deleteInjury
+      summary: Remove an injury
+      x-requirements: [FR-U6]
+      responses:
+        '204': {description: Deleted}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /users/me/allergies:
+    get:
+      tags: [account]
+      operationId: getAllergies
+      summary: The user's allergens and intolerances
+      x-requirements: [FR-P6, FR-N3]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {type: array, items: {$ref: '#/components/schemas/Allergen'}}}}}
+    put:
+      tags: [account]
+      operationId: putAllergies
+      summary: Replace the allergen list
+      x-requirements: [FR-P6, FR-N3]
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [allergen_ids], properties: {allergen_ids: {type: array, items: {type: integer}}}}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {type: array, items: {$ref: '#/components/schemas/Allergen'}}}}}
+        '422': {$ref: '#/components/responses/ValidationError'}
+  /users/me/excluded-foods:
+    get:
+      tags: [account]
+      operationId: getExcludedFoods
+      summary: Foods the user never wants in a diet plan
+      x-requirements: [FR-P6]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {type: array, items: {$ref: '#/components/schemas/FoodSummary'}}}}}
+    put:
+      tags: [account]
+      operationId: putExcludedFoods
+      summary: Replace the excluded foods
+      x-requirements: [FR-P6]
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [food_item_ids], properties: {food_item_ids: {type: array, items: {type: integer}}}}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {type: array, items: {$ref: '#/components/schemas/FoodSummary'}}}}}
+        '422': {$ref: '#/components/responses/ValidationError'}
+
+  # ------------------------------------------------------------------ reference and libraries
+  /injury-types:
+    get:
+      tags: [reference]
+      operationId: listInjuryTypes
+      summary: Injury dictionary
+      x-requirements: [FR-U6]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {type: array, items: {$ref: '#/components/schemas/InjuryType'}}}}}
+  /allergens:
+    get:
+      tags: [reference]
+      operationId: listAllergens
+      summary: Allergen dictionary
+      x-requirements: [FR-P6, FR-N3]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {type: array, items: {$ref: '#/components/schemas/Allergen'}}}}}
+  /muscle-groups:
+    get:
+      tags: [reference]
+      operationId: listMuscleGroups
+      summary: Muscle groups
+      x-requirements: [FR-P8]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {type: array, items: {$ref: '#/components/schemas/MuscleGroup'}}}}}
+  /food-categories:
+    get:
+      tags: [reference]
+      operationId: listFoodCategories
+      summary: Food categories
+      x-requirements: [FR-P8]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {type: array, items: {$ref: '#/components/schemas/FoodCategory'}}}}}
+  /exercises:
+    get:
+      tags: [library]
+      operationId: listExercises
+      summary: Exercise library
+      x-requirements: [FR-P8]
+      parameters:
+        - {name: q, in: query, schema: {type: string}, description: Case-insensitive name search}
+        - {name: muscle_group_id, in: query, schema: {type: integer}}
+        - {name: equipment, in: query, schema: {$ref: '#/components/schemas/Equipment'}}
+        - {name: difficulty_level, in: query, schema: {$ref: '#/components/schemas/ExperienceLevel'}}
+        - {$ref: '#/components/parameters/Limit'}
+        - {$ref: '#/components/parameters/Offset'}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/ExercisePage'}}}}
+  /exercises/{id}:
+    parameters: [{$ref: '#/components/parameters/Id'}]
+    get:
+      tags: [library]
+      operationId: getExercise
+      summary: Exercise with text instructions
+      x-requirements: [FR-P8]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/Exercise'}}}}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /exercises/{id}/alternatives:
+    parameters: [{$ref: '#/components/parameters/Id'}]
+    get:
+      tags: [library]
+      operationId: listExerciseAlternatives
+      summary: Same-muscle-group alternatives that suit the user
+      description: Rules in algorithms.md 4.9 (level, equipment and injuries respected).
+      x-requirements: [FR-A1]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {type: array, items: {$ref: '#/components/schemas/ExerciseSummary'}}}}}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /foods:
+    get:
+      tags: [library]
+      operationId: listFoods
+      summary: Food database
+      x-requirements: [FR-P8]
+      parameters:
+        - {name: q, in: query, schema: {type: string}}
+        - {name: category_id, in: query, schema: {type: integer}}
+        - {name: role, in: query, schema: {$ref: '#/components/schemas/FoodRole'}}
+        - {$ref: '#/components/parameters/Limit'}
+        - {$ref: '#/components/parameters/Offset'}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/FoodPage'}}}}
+  /foods/{id}:
+    parameters: [{$ref: '#/components/parameters/Id'}]
+    get:
+      tags: [library]
+      operationId: getFood
+      summary: Food with nutrition values per 100 g
+      x-requirements: [FR-P8]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/Food'}}}}
+        '404': {$ref: '#/components/responses/NotFound'}
+
+  # ------------------------------------------------------------------ training plans
+  /nutrition/targets:
+    get:
+      tags: [diet]
+      operationId: getNutritionTargets
+      summary: BMR, TDEE and macro targets for the current profile
+      x-requirements: [FR-P4, FR-P5]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/NutritionTargets'}}}}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /training-plans/generate:
+    post:
+      tags: [training]
+      operationId: generateTrainingPlan
+      summary: Generate a draft training plan
+      description: |
+        Creates (and replaces) the user's draft plan. When a required muscle group has no eligible
+        exercise the answer is 422 `insufficient_exercises` with `details` listing the groups and the
+        suggestions `change_equipment` / `change_goal` (algorithms.md 4.4). Must answer within 3 s.
+      x-requirements: [FR-P1, FR-P2, FR-P3]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/GenerateTrainingPlanRequest'}}}}
+      responses:
+        '201': {description: Draft plan, content: {application/json: {schema: {$ref: '#/components/schemas/TrainingPlan'}}}}
+        '404': {description: Profile missing, content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '422': {$ref: '#/components/responses/ValidationError'}
+  /training-plans/active:
+    get:
+      tags: [training]
+      operationId: getActiveTrainingPlan
+      summary: The accepted plan
+      x-requirements: [FR-P7]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/TrainingPlan'}}}}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /training-plans/draft:
+    get:
+      tags: [training]
+      operationId: getDraftTrainingPlan
+      summary: The plan waiting for acceptance
+      x-requirements: [FR-P7]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/TrainingPlan'}}}}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /training-plans/{id}/accept:
+    parameters: [{$ref: '#/components/parameters/Id'}]
+    post:
+      tags: [training]
+      operationId: acceptTrainingPlan
+      summary: Accept the draft (it becomes active, the previous active plan is archived)
+      x-requirements: [FR-P7]
+      requestBody: {required: false, content: {application/json: {schema: {$ref: '#/components/schemas/AcceptPlanRequest'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/TrainingPlan'}}}}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /training-sessions/{id}:
+    parameters: [{$ref: '#/components/parameters/Id'}]
+    patch:
+      tags: [training]
+      operationId: updateTrainingSession
+      summary: Move a session to another weekday
+      x-requirements: [FR-P9]
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [weekday], properties: {weekday: {$ref: '#/components/schemas/Weekday'}}}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/TrainingSession'}}}}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /session-exercises/{id}:
+    parameters: [{$ref: '#/components/parameters/Id'}]
+    patch:
+      tags: [training]
+      operationId: updateSessionExercise
+      summary: Edit sets, reps, weight or rest of a planned exercise
+      x-requirements: [FR-P7]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/SessionExerciseUpdate'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/SessionExercise'}}}}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '422': {$ref: '#/components/responses/ValidationError'}
+  /session-exercises/{id}/swap:
+    parameters: [{$ref: '#/components/parameters/Id'}]
+    put:
+      tags: [training]
+      operationId: swapSessionExercise
+      summary: Replace the exercise with an alternative of the same muscle group
+      description: Rejects with 422 `invalid_swap` when the exercise is ineligible or from another muscle group.
+      x-requirements: [FR-A1]
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [exercise_id], properties: {exercise_id: {type: integer}}}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/SessionExercise'}}}}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '422': {$ref: '#/components/responses/ValidationError'}
+
+  # ------------------------------------------------------------------ diet plans
+  /diet-plans/generate:
+    post:
+      tags: [diet]
+      operationId: generateDietPlan
+      summary: Generate a draft 7-day diet plan
+      description: 422 `insufficient_foods` when the targets cannot be met with the eligible foods (algorithms.md 5.5).
+      x-requirements: [FR-P4, FR-P5, FR-P6]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/GenerateDietPlanRequest'}}}}
+      responses:
+        '201': {description: Draft plan, content: {application/json: {schema: {$ref: '#/components/schemas/DietPlan'}}}}
+        '404': {description: Profile missing, content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '422': {$ref: '#/components/responses/ValidationError'}
+  /diet-plans/active:
+    get:
+      tags: [diet]
+      operationId: getActiveDietPlan
+      summary: The accepted diet plan
+      x-requirements: [FR-P7]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/DietPlan'}}}}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /diet-plans/draft:
+    get:
+      tags: [diet]
+      operationId: getDraftDietPlan
+      summary: The diet plan waiting for acceptance
+      x-requirements: [FR-P7]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/DietPlan'}}}}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /diet-plans/{id}/accept:
+    parameters: [{$ref: '#/components/parameters/Id'}]
+    post:
+      tags: [diet]
+      operationId: acceptDietPlan
+      summary: Accept the draft diet plan
+      x-requirements: [FR-P7]
+      requestBody: {required: false, content: {application/json: {schema: {$ref: '#/components/schemas/AcceptPlanRequest'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/DietPlan'}}}}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+
+  # ------------------------------------------------------------------ schedule, devices, notifications
+  /reminders:
+    get:
+      tags: [schedule]
+      operationId: listReminders
+      summary: Training-day and meal-time reminders
+      x-requirements: [FR-P9]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {type: array, items: {$ref: '#/components/schemas/Reminder'}}}}}
+    put:
+      tags: [schedule]
+      operationId: putReminders
+      summary: Replace all reminders (the app reschedules local notifications from the answer)
+      x-requirements: [FR-P9]
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [reminders], properties: {reminders: {type: array, items: {$ref: '#/components/schemas/ReminderInput'}}}}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {type: array, items: {$ref: '#/components/schemas/Reminder'}}}}}
+        '422': {$ref: '#/components/responses/ValidationError'}
+  /devices/push-token:
+    post:
+      tags: [schedule]
+      operationId: registerPushToken
+      summary: Register or refresh the Expo push token of this device
+      x-requirements: [FR-P9, FR-R7]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/PushTokenRequest'}}}}
+      responses:
+        '201': {description: Registered, content: {application/json: {schema: {$ref: '#/components/schemas/PushToken'}}}}
+        '422': {$ref: '#/components/responses/ValidationError'}
+  /devices/push-token/{id}:
+    parameters: [{$ref: '#/components/parameters/Id'}]
+    delete:
+      tags: [schedule]
+      operationId: deletePushToken
+      summary: Unregister a device (also done on logout)
+      x-requirements: [FR-R7]
+      responses:
+        '204': {description: Deleted}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /notifications:
+    get:
+      tags: [schedule]
+      operationId: listNotifications
+      summary: In-app notification inbox
+      x-requirements: [FR-R7]
+      parameters: [{$ref: '#/components/parameters/Limit'}, {$ref: '#/components/parameters/Offset'}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/NotificationPage'}}}}
+  /notifications/{id}/read:
+    parameters: [{$ref: '#/components/parameters/Id'}]
+    post:
+      tags: [schedule]
+      operationId: markNotificationRead
+      summary: Mark a notification as read
+      x-requirements: [FR-R7]
+      responses:
+        '204': {description: Marked}
+        '404': {$ref: '#/components/responses/NotFound'}
+
+  # ------------------------------------------------------------------ workouts
+  /sessions/next:
+    get:
+      tags: [workouts]
+      operationId: getNextSession
+      summary: The next planned session with its current (possibly adapted) values
+      x-requirements: [FR-A4, FR-A5]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/NextSession'}}}}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /workouts:
+    post:
+      tags: [workouts]
+      operationId: createWorkout
+      summary: Save a finished workout and run the adaptation
+      description: |
+        Stores the workout with its sets, updates personal records and applies algorithms.md section 6.
+        The answer lists the plan adjustments made (empty when there was no explicit signal) so the app can tell the user.
+      x-requirements: [FR-A2, FR-A4, FR-A5]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/WorkoutInput'}}}}
+      responses:
+        '201': {description: Saved, content: {application/json: {schema: {$ref: '#/components/schemas/WorkoutResult'}}}}
+        '422': {$ref: '#/components/responses/ValidationError'}
+    get:
+      tags: [workouts]
+      operationId: listWorkouts
+      summary: Workout history
+      x-requirements: [FR-R1, FR-R3]
+      parameters:
+        - {$ref: '#/components/parameters/DateFrom'}
+        - {$ref: '#/components/parameters/DateTo'}
+        - {$ref: '#/components/parameters/Limit'}
+        - {$ref: '#/components/parameters/Offset'}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/WorkoutPage'}}}}
+  /workouts/{id}:
+    parameters: [{$ref: '#/components/parameters/Id'}]
+    get:
+      tags: [workouts]
+      operationId: getWorkout
+      summary: One workout with its sets
+      x-requirements: [FR-A2]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/Workout'}}}}
+        '404': {$ref: '#/components/responses/NotFound'}
+    put:
+      tags: [workouts]
+      operationId: updateWorkout
+      summary: Replace a saved workout (sets included); does not re-run the adaptation
+      x-requirements: [FR-A2]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/WorkoutInput'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/Workout'}}}}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '422': {$ref: '#/components/responses/ValidationError'}
+    delete:
+      tags: [workouts]
+      operationId: deleteWorkout
+      summary: Delete a workout (soft delete, kept as a tombstone for sync)
+      x-requirements: [FR-A2]
+      responses:
+        '204': {description: Deleted}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /personal-records:
+    get:
+      tags: [workouts]
+      operationId: listPersonalRecords
+      summary: Current personal records per exercise
+      x-requirements: [FR-R1]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {type: array, items: {$ref: '#/components/schemas/PersonalRecord'}}}}}
+  /body-metrics:
+    post:
+      tags: [workouts]
+      operationId: saveBodyMetrics
+      summary: Save a measurement (a second save for the same day updates it)
+      x-requirements: [FR-R1, FR-U6]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/BodyMetricsInput'}}}}
+      responses:
+        '200': {description: Saved, content: {application/json: {schema: {$ref: '#/components/schemas/BodyMetrics'}}}}
+        '422': {$ref: '#/components/responses/ValidationError'}
+    get:
+      tags: [workouts]
+      operationId: listBodyMetrics
+      summary: Measurement history
+      x-requirements: [FR-R1, FR-R3]
+      parameters: [{$ref: '#/components/parameters/DateFrom'}, {$ref: '#/components/parameters/DateTo'}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {type: array, items: {$ref: '#/components/schemas/BodyMetrics'}}}}}
+  /body-metrics/{id}:
+    parameters: [{$ref: '#/components/parameters/Id'}]
+    delete:
+      tags: [workouts]
+      operationId: deleteBodyMetrics
+      summary: Delete a measurement
+      x-requirements: [FR-R1]
+      responses:
+        '204': {description: Deleted}
+        '404': {$ref: '#/components/responses/NotFound'}
+
+  # ------------------------------------------------------------------ nutrition
+  /meals/recognitions:
+    post:
+      tags: [nutrition]
+      operationId: createRecognition
+      summary: Upload a meal photo and get recognised products
+      description: |
+        multipart/form-data. The photo is checked (JPEG, PNG or WebP, at most 8 MB), sent to the AI service
+        and the result is stored as an unconfirmed recognition that expires after 6 h. Must answer within 10 s.
+        503 `ai_unavailable` when the AI service fails (nothing is stored).
+      x-requirements: [FR-N1, FR-N2, FR-N3]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [photo, meal_type]
+              properties:
+                photo: {type: string, format: binary}
+                meal_type: {$ref: '#/components/schemas/MealType'}
+      responses:
+        '201': {description: Recognition, content: {application/json: {schema: {$ref: '#/components/schemas/Recognition'}}}}
+        '413': {description: Photo too large, content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '415': {description: Unsupported media type, content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '503': {description: AI service unavailable, content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+  /meals/recognitions/{id}:
+    parameters: [{$ref: '#/components/parameters/RecognitionId'}]
+    get:
+      tags: [nutrition]
+      operationId: getRecognition
+      summary: Current state of an unconfirmed recognition
+      x-requirements: [FR-N4]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/Recognition'}}}}
+        '404': {description: Not found or expired, content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+    delete:
+      tags: [nutrition]
+      operationId: discardRecognition
+      summary: Discard the recognition and its photo
+      x-requirements: [FR-N4]
+      responses:
+        '204': {description: Discarded}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /meals/recognitions/{id}/items:
+    parameters: [{$ref: '#/components/parameters/RecognitionId'}]
+    post:
+      tags: [nutrition]
+      operationId: addRecognitionItem
+      summary: Add a product the model missed
+      x-requirements: [FR-N4]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/RecognitionItemInput'}}}}
+      responses:
+        '200': {description: Updated recognition, content: {application/json: {schema: {$ref: '#/components/schemas/Recognition'}}}}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '422': {$ref: '#/components/responses/ValidationError'}
+  /meals/recognitions/{id}/items/{index}:
+    parameters:
+      - {$ref: '#/components/parameters/RecognitionId'}
+      - {name: index, in: path, required: true, schema: {type: integer, minimum: 0}, description: Position of the item in `items`}
+    patch:
+      tags: [nutrition]
+      operationId: updateRecognitionItem
+      summary: Change the grams or replace the product of one item
+      description: Nutrition is recalculated and the item is marked `corrected`. An allergy warning is recomputed for a replaced product.
+      x-requirements: [FR-N3, FR-N4]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/RecognitionItemUpdate'}}}}
+      responses:
+        '200': {description: Updated recognition, content: {application/json: {schema: {$ref: '#/components/schemas/Recognition'}}}}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '422': {$ref: '#/components/responses/ValidationError'}
+    delete:
+      tags: [nutrition]
+      operationId: deleteRecognitionItem
+      summary: Remove an item
+      x-requirements: [FR-N4]
+      responses:
+        '200': {description: Updated recognition, content: {application/json: {schema: {$ref: '#/components/schemas/Recognition'}}}}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /meals/recognitions/{id}/confirm:
+    parameters: [{$ref: '#/components/parameters/RecognitionId'}]
+    post:
+      tags: [nutrition]
+      operationId: confirmRecognition
+      summary: Save the recognition as a nutrition log
+      description: One transaction writes recognition_ai, nutrition_log and nutrition_log_food_item, then deletes the buffer document. A recognition with an item that has no matched product is rejected with 422.
+      x-requirements: [FR-N4]
+      requestBody: {required: false, content: {application/json: {schema: {$ref: '#/components/schemas/ConfirmRecognitionRequest'}}}}
+      responses:
+        '201': {description: Saved, content: {application/json: {schema: {$ref: '#/components/schemas/NutritionLog'}}}}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '422': {$ref: '#/components/responses/ValidationError'}
+  /nutrition-logs:
+    post:
+      tags: [nutrition]
+      operationId: createNutritionLog
+      summary: Log a meal manually or from the plan
+      x-requirements: [FR-A3, FR-R2]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/NutritionLogInput'}}}}
+      responses:
+        '201': {description: Saved, content: {application/json: {schema: {$ref: '#/components/schemas/NutritionLog'}}}}
+        '422': {$ref: '#/components/responses/ValidationError'}
+    get:
+      tags: [nutrition]
+      operationId: listNutritionLogs
+      summary: Logged meals
+      x-requirements: [FR-R3]
+      parameters:
+        - {$ref: '#/components/parameters/DateFrom'}
+        - {$ref: '#/components/parameters/DateTo'}
+        - {$ref: '#/components/parameters/Limit'}
+        - {$ref: '#/components/parameters/Offset'}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/NutritionLogPage'}}}}
+  /nutrition-logs/{id}:
+    parameters: [{$ref: '#/components/parameters/Id'}]
+    get:
+      tags: [nutrition]
+      operationId: getNutritionLog
+      summary: One logged meal
+      x-requirements: [FR-A3]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/NutritionLog'}}}}
+        '404': {$ref: '#/components/responses/NotFound'}
+    patch:
+      tags: [nutrition]
+      operationId: updateNutritionLog
+      summary: Change items or hunger levels
+      x-requirements: [FR-A3]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/NutritionLogUpdate'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/NutritionLog'}}}}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '422': {$ref: '#/components/responses/ValidationError'}
+    delete:
+      tags: [nutrition]
+      operationId: deleteNutritionLog
+      summary: Delete a logged meal (soft delete)
+      x-requirements: [FR-A3]
+      responses:
+        '204': {description: Deleted}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /nutrition/daily-summary:
+    get:
+      tags: [nutrition]
+      operationId: getDailySummary
+      summary: Totals of a day against the diet targets
+      x-requirements: [FR-R2, FR-R3]
+      parameters: [{name: date, in: query, required: true, schema: {type: string, format: date}}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/DailySummary'}}}}
+  /nutrition/suggestions:
+    get:
+      tags: [nutrition]
+      operationId: getMealSuggestions
+      summary: What to eat now to reach today's targets
+      description: "Rules in algorithms.md section 10. Empty list with message target_reached when under 100 kcal remain."
+      x-requirements: [FR-N5]
+      parameters: [{name: date, in: query, required: false, schema: {type: string, format: date}, description: Defaults to today in the user's time zone}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/Suggestions'}}}}
+        '404': {description: No active diet plan, content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+
+  # ------------------------------------------------------------------ analytics and reports
+  /analytics/summary:
+    get:
+      tags: [analytics]
+      operationId: getAnalyticsSummary
+      summary: Key metrics for week, month or three months
+      description: "Returns status insufficient_data until the history has 7 days with data (algorithms.md section 8)."
+      x-requirements: [FR-R1, FR-R2, FR-R5]
+      parameters: [{$ref: '#/components/parameters/Period'}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/AnalyticsSummary'}}}}
+  /analytics/charts/{metric}:
+    get:
+      tags: [analytics]
+      operationId: getChartSeries
+      summary: Time series for a chart
+      x-requirements: [FR-R3, FR-R5]
+      parameters:
+        - {name: metric, in: path, required: true, schema: {type: string, enum: [weight, tonnage, workouts_per_week, calories, workout_compliance, diet_compliance]}}
+        - {$ref: '#/components/parameters/Period'}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/ChartSeries'}}}}
+  /analytics/goal-prediction:
+    get:
+      tags: [analytics]
+      operationId: getGoalPrediction
+      summary: Estimated date of reaching the target weight
+      x-requirements: [FR-R4, FR-R5]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/GoalPrediction'}}}}
+  /reports:
+    get:
+      tags: [analytics]
+      operationId: listReports
+      summary: Generated reports
+      x-requirements: [FR-R1, FR-R7]
+      parameters:
+        - {name: report_type, in: query, schema: {$ref: '#/components/schemas/ReportType'}}
+        - {$ref: '#/components/parameters/Limit'}
+        - {$ref: '#/components/parameters/Offset'}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/ReportPage'}}}}
+    post:
+      tags: [analytics]
+      operationId: createReport
+      summary: Generate a report for a chosen period
+      x-requirements: [FR-R1, FR-R5]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/CreateReportRequest'}}}}
+      responses:
+        '201': {description: Created, content: {application/json: {schema: {$ref: '#/components/schemas/Report'}}}}
+        '422': {$ref: '#/components/responses/ValidationError'}
+  /reports/{id}:
+    parameters: [{$ref: '#/components/parameters/Id'}]
+    get:
+      tags: [analytics]
+      operationId: getReport
+      summary: One report
+      x-requirements: [FR-R1, FR-R7]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/Report'}}}}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /reports/{id}/export:
+    parameters: [{$ref: '#/components/parameters/Id'}]
+    get:
+      tags: [analytics]
+      operationId: exportReport
+      summary: Download a report as PDF or CSV
+      x-requirements: [FR-R6]
+      parameters: [{name: format, in: query, required: true, schema: {type: string, enum: [pdf, csv]}}]
+      responses:
+        '200':
+          description: The file
+          content:
+            application/pdf: {schema: {type: string, format: binary}}
+            text/csv: {schema: {type: string, format: binary}}
+        '404': {$ref: '#/components/responses/NotFound'}
+
+  # ------------------------------------------------------------------ offline sync
+  /sync/push:
+    post:
+      tags: [sync]
+      operationId: syncPush
+      summary: Upload changes made offline
+      description: |
+        Scope: workout logs, nutrition logs, body metrics (design D-07). Idempotent by `client_uuid`: sending
+        the same item again changes nothing. Optimistic concurrency: when `base_updated_at` is given and differs
+        from the stored `updated_at`, the item is not applied and the server copy is returned with status
+        `conflict` (server wins; the app replaces its local copy). A new item has no `base_updated_at`.
+        Adaptation is not run for synced workouts.
+      x-requirements: [NFR-OFF]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/SyncPushRequest'}}}}
+      responses:
+        '200': {description: Per-item result, content: {application/json: {schema: {$ref: '#/components/schemas/SyncPushResponse'}}}}
+        '422': {$ref: '#/components/responses/ValidationError'}
+  /sync/pull:
+    get:
+      tags: [sync]
+      operationId: syncPull
+      summary: Download changes since a cursor
+      description: Items include tombstones (`deleted_at` set). Without a cursor everything is returned in pages. The cursor is opaque; the server applies a small overlap so no change is missed, so the client must apply items idempotently.
+      x-requirements: [NFR-OFF]
+      parameters:
+        - {name: cursor, in: query, schema: {type: string}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 500, default: 200}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/SyncPullResponse'}}}}
+
+components:
+  securitySchemes:
+    bearerAuth: {type: http, scheme: bearer, bearerFormat: JWT}
+
+  parameters:
+    Id: {name: id, in: path, required: true, schema: {type: integer, minimum: 1}}
+    RecognitionId: {name: id, in: path, required: true, schema: {type: string}, description: Opaque id of the unconfirmed recognition (MongoDB ObjectId as a string)}
+    Limit: {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 20}}
+    Offset: {name: offset, in: query, schema: {type: integer, minimum: 0, default: 0}}
+    DateFrom: {name: from, in: query, schema: {type: string, format: date}}
+    DateTo: {name: to, in: query, schema: {type: string, format: date}}
+    Period: {name: period, in: query, required: true, schema: {type: string, enum: [week, month, 3months]}}
+
+  responses:
+    Unauthorized: {description: Missing, invalid or expired credentials, content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+    NotFound: {description: Not found (also used for rows of other users), content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+    Conflict: {description: Conflict (for example email already used, plan state), content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+    ValidationError: {description: Invalid input or a business rule failed, content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+    TooManyRequests: {description: Rate limit exceeded, content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+
+  schemas:
+    # ---------- common
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          description: 'Stable machine code. Used: validation_error, unauthorized, invalid_credentials, token_expired, forbidden, not_found, conflict, email_taken, rate_limited, insufficient_exercises, insufficient_foods, invalid_swap, insufficient_data, payload_too_large, unsupported_media_type, ai_unavailable, recognition_expired, internal_error.'
+        message: {type: string, description: Human-readable, English}
+        details:
+          type: array
+          items:
+            type: object
+            required: [code]
+            properties:
+              field: {type: string, description: 'Dotted path of the field, e.g. weight_kg'}
+              code: {type: string, description: 'e.g. out_of_range, required, too_long'}
+              message: {type: string}
+            additionalProperties: true
+    Health:
+      type: object
+      required: [status]
+      properties:
+        status: {type: string, enum: [ok, degraded]}
+        postgres: {type: string, enum: [up, down]}
+        mongo: {type: string, enum: [up, down]}
+        ai_service: {type: string, enum: [up, down]}
+    Macros:
+      type: object
+      required: [kcal, protein, fat, carbs]
+      properties:
+        kcal: {type: number}
+        protein: {type: number, description: grams}
+        fat: {type: number, description: grams}
+        carbs: {type: number, description: grams}
+    # ---------- enums
+    Sex: {type: string, enum: [male, female, other]}
+    Goal: {type: string, enum: [weight_loss, muscle_gain, strength, maintenance, general_fitness, endurance]}
+    ExperienceLevel: {type: string, enum: [beginner, intermediate, advanced]}
+    Equipment: {type: string, enum: [none, home, gym], description: 'Ordered none < home < gym; a user can use any exercise at or below their level'}
+    Severity: {type: string, enum: [mild, moderate, severe]}
+    MealType: {type: string, enum: [breakfast, lunch, dinner, snack]}
+    Weekday: {type: string, enum: [mon, tue, wed, thu, fri, sat, sun]}
+    NotificationType: {type: string, enum: [meal_reminder, training_reminder, progress_update, achievement, motivational]}
+    ReportType: {type: string, enum: [weekly, monthly, custom]}
+    PlanStatus: {type: string, enum: [draft, active, archived]}
+    DietType: {type: string, enum: [omnivore, vegetarian, vegan]}
+    FoodRole: {type: string, enum: [protein, carb, fat, vegetable, fruit, dairy, dish, other]}
+    BodyRegion: {type: string, enum: [upper, lower, core]}
+    AdjustmentReason: {type: string, enum: [baseline, reduce_high_rpe, reduce_incomplete_set, progression]}
+    # ---------- auth and account
+    RegisterRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email: {type: string, format: email, maxLength: 254}
+        password: {type: string, minLength: 8, maxLength: 72, description: 'At least one letter and one digit; at most 72 bytes (bcrypt)'}
+        timezone: {type: string, description: IANA name, example: Europe/Warsaw}
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email: {type: string, format: email}
+        password: {type: string}
+        device_label: {type: string}
+    RefreshRequest:
+      type: object
+      required: [refresh_token]
+      properties: {refresh_token: {type: string}}
+    TokenPair:
+      type: object
+      required: [access_token, refresh_token, token_type, expires_in]
+      properties:
+        access_token: {type: string}
+        refresh_token: {type: string}
+        token_type: {type: string, const: bearer}
+        expires_in: {type: integer, description: Access token lifetime in seconds}
+    ForgotPasswordRequest:
+      type: object
+      required: [email]
+      properties: {email: {type: string, format: email}}
+    ResetPasswordRequest:
+      type: object
+      required: [token, new_password]
+      properties:
+        token: {type: string}
+        new_password: {type: string, minLength: 8, maxLength: 72}
+    OAuthRequest:
+      type: object
+      required: [id_token]
+      properties:
+        id_token: {type: string, description: ID token (Google) or identity token (Apple)}
+        timezone: {type: string}
+    ChangeEmailRequest:
+      type: object
+      required: [new_email, current_password]
+      properties:
+        new_email: {type: string, format: email}
+        current_password: {type: string}
+    ChangePasswordRequest:
+      type: object
+      required: [current_password, new_password]
+      properties:
+        current_password: {type: string}
+        new_password: {type: string, minLength: 8, maxLength: 72}
+    DeleteAccountRequest:
+      type: object
+      required: [confirmation]
+      properties:
+        confirmation: {type: string, const: DELETE}
+        current_password: {type: [string, 'null'], description: Required for accounts that have a password}
+    User:
+      type: object
+      required: [id, email, timezone, has_profile, created_at]
+      properties:
+        id: {type: integer}
+        email: {type: string, format: email}
+        name: {type: [string, 'null']}
+        surname: {type: [string, 'null']}
+        timezone: {type: string}
+        has_profile: {type: boolean, description: False until onboarding is finished}
+        created_at: {type: string, format: date-time}
+    UserUpdate:
+      type: object
+      properties:
+        name: {type: [string, 'null'], maxLength: 100}
+        surname: {type: [string, 'null'], maxLength: 100}
+        timezone: {type: string}
+    ProfileInput:
+      type: object
+      required: [age, sex, weight_kg, height_cm, activity_level_pal, goal, experience_level, equipment]
+      properties:
+        age: {type: integer, minimum: 16, maximum: 100}
+        sex: {$ref: '#/components/schemas/Sex'}
+        weight_kg: {type: number, minimum: 30, maximum: 300}
+        height_cm: {type: integer, minimum: 120, maximum: 250}
+        activity_level_pal: {type: number, minimum: 1.2, maximum: 2.4, description: 'App offers 1.2, 1.375, 1.55, 1.725, 1.9'}
+        goal: {$ref: '#/components/schemas/Goal'}
+        target_weight_kg: {type: [number, 'null'], minimum: 30, maximum: 300}
+        experience_level: {$ref: '#/components/schemas/ExperienceLevel'}
+        equipment: {$ref: '#/components/schemas/Equipment'}
+    Profile:
+      allOf:
+        - $ref: '#/components/schemas/ProfileInput'
+        - type: object
+          required: [tdee_kcal, updated_at]
+          properties:
+            tdee_kcal: {type: integer}
+            updated_at: {type: string, format: date-time}
+    InjuryInput:
+      type: object
+      required: [injury_type_id, affected_muscle_group_id, severity, start_date]
+      properties:
+        injury_type_id: {type: integer}
+        affected_muscle_group_id: {type: integer}
+        severity: {$ref: '#/components/schemas/Severity'}
+        start_date: {type: string, format: date}
+        is_active: {type: boolean, default: true}
+        notes: {type: [string, 'null'], maxLength: 500}
+    InjuryUpdate:
+      type: object
+      properties:
+        severity: {$ref: '#/components/schemas/Severity'}
+        is_active: {type: boolean}
+        notes: {type: [string, 'null'], maxLength: 500}
+    Injury:
+      allOf:
+        - $ref: '#/components/schemas/InjuryInput'
+        - type: object
+          required: [id, injury_type_name, affected_muscle_group_name]
+          properties:
+            id: {type: integer}
+            injury_type_name: {type: string}
+            affected_muscle_group_name: {type: string}
+    InjuryType:
+      type: object
+      required: [id, name]
+      properties:
+        id: {type: integer}
+        name: {type: string}
+        description: {type: string}
+        avg_healing_time_days: {type: integer}
+    Allergen:
+      type: object
+      required: [id, name]
+      properties:
+        id: {type: integer}
+        name: {type: string}
+        description: {type: string}
+    MuscleGroup:
+      type: object
+      required: [id, name, body_region]
+      properties:
+        id: {type: integer}
+        name: {type: string}
+        description: {type: string}
+        image_url: {type: [string, 'null']}
+        body_region: {$ref: '#/components/schemas/BodyRegion'}
+    MuscleGroupRef:
+      type: object
+      required: [id, name]
+      properties:
+        id: {type: integer}
+        name: {type: string}
+    FoodCategory:
+      type: object
+      required: [id, name]
+      properties:
+        id: {type: integer}
+        name: {type: string}
+        description: {type: string}
+    # ---------- libraries
+    ExerciseSummary:
+      type: object
+      required: [id, name, main_muscle_group, difficulty_level, equipment, is_compound, is_bodyweight]
+      properties:
+        id: {type: integer}
+        name: {type: string}
+        main_muscle_group: {$ref: '#/components/schemas/MuscleGroupRef'}
+        difficulty_level: {$ref: '#/components/schemas/ExperienceLevel'}
+        equipment: {$ref: '#/components/schemas/Equipment'}
+        is_compound: {type: boolean}
+        is_bodyweight: {type: boolean}
+    Exercise:
+      allOf:
+        - $ref: '#/components/schemas/ExerciseSummary'
+        - type: object
+          required: [description, instruction, secondary_muscle_groups]
+          properties:
+            description: {type: string}
+            instruction: {type: string}
+            secondary_muscle_groups: {type: array, items: {$ref: '#/components/schemas/MuscleGroupRef'}}
+    ExercisePage:
+      type: object
+      required: [items, total, limit, offset]
+      properties:
+        items: {type: array, items: {$ref: '#/components/schemas/ExerciseSummary'}}
+        total: {type: integer}
+        limit: {type: integer}
+        offset: {type: integer}
+    FoodSummary:
+      type: object
+      required: [id, name, calories_per_100g, protein_per_100g, fat_per_100g, carbs_per_100g, role, default_portion_g]
+      properties:
+        id: {type: integer}
+        name: {type: string}
+        calories_per_100g: {type: number}
+        protein_per_100g: {type: number}
+        fat_per_100g: {type: number}
+        carbs_per_100g: {type: number}
+        role: {$ref: '#/components/schemas/FoodRole'}
+        default_portion_g: {type: integer}
+    Food:
+      allOf:
+        - $ref: '#/components/schemas/FoodSummary'
+        - type: object
+          required: [categories, allergens, is_vegetarian, is_vegan, min_portion_g, max_portion_g, portion_step_g]
+          properties:
+            categories: {type: array, items: {$ref: '#/components/schemas/FoodCategory'}}
+            allergens: {type: array, items: {$ref: '#/components/schemas/Allergen'}}
+            is_vegetarian: {type: boolean}
+            is_vegan: {type: boolean}
+            min_portion_g: {type: integer}
+            max_portion_g: {type: integer}
+            portion_step_g: {type: integer}
+    FoodPage:
+      type: object
+      required: [items, total, limit, offset]
+      properties:
+        items: {type: array, items: {$ref: '#/components/schemas/FoodSummary'}}
+        total: {type: integer}
+        limit: {type: integer}
+        offset: {type: integer}
+    # ---------- plans
+    NutritionTargets:
+      type: object
+      required: [bmr_kcal, tdee_kcal, target_kcal, protein_g, fat_g, carbs_g, goal]
+      properties:
+        bmr_kcal: {type: number}
+        tdee_kcal: {type: integer}
+        target_kcal: {type: integer}
+        protein_g: {type: number}
+        fat_g: {type: number}
+        carbs_g: {type: number}
+        goal: {$ref: '#/components/schemas/Goal'}
+    GenerateTrainingPlanRequest:
+      type: object
+      required: [goal, training_days]
+      properties:
+        goal: {$ref: '#/components/schemas/Goal'}
+        training_days: {type: integer, minimum: 1, maximum: 7}
+        experience_level: {$ref: '#/components/schemas/ExperienceLevel'}
+        equipment: {$ref: '#/components/schemas/Equipment'}
+    AcceptPlanRequest:
+      type: object
+      properties:
+        start_date: {type: string, format: date, description: Defaults to today in the user's time zone}
+    SessionExercise:
+      type: object
+      required: [id, position, exercise, planned_sets, planned_reps, planned_weight_kg, rest_seconds]
+      properties:
+        id: {type: integer}
+        position: {type: integer}
+        exercise: {$ref: '#/components/schemas/ExerciseSummary'}
+        original_exercise_id: {type: [integer, 'null']}
+        planned_sets: {type: integer, minimum: 1, maximum: 10}
+        planned_reps: {type: integer, minimum: 1, maximum: 50}
+        planned_weight_kg: {type: [number, 'null'], description: Null until the first logged workout}
+        rest_seconds: {type: integer, minimum: 0, maximum: 600}
+    SessionExerciseUpdate:
+      type: object
+      minProperties: 1
+      properties:
+        planned_sets: {type: integer, minimum: 1, maximum: 10}
+        planned_reps: {type: integer, minimum: 1, maximum: 50}
+        planned_weight_kg: {type: [number, 'null'], minimum: 0}
+        rest_seconds: {type: integer, minimum: 0, maximum: 600}
+    TrainingSession:
+      type: object
+      required: [id, session_order, name, weekday, estimated_duration_min, exercises]
+      properties:
+        id: {type: integer}
+        session_order: {type: integer}
+        name: {type: string}
+        weekday: {$ref: '#/components/schemas/Weekday'}
+        estimated_duration_min: {type: integer}
+        exercises: {type: array, items: {$ref: '#/components/schemas/SessionExercise'}}
+    SkippedGroup:
+      type: object
+      required: [muscle_group, reason]
+      properties:
+        muscle_group: {$ref: '#/components/schemas/MuscleGroupRef'}
+        reason: {type: string, enum: [injury]}
+    TrainingPlan:
+      type: object
+      required: [id, name, goal, num_training_days, experience_level, equipment, status, skipped_groups, generated_at, sessions]
+      properties:
+        id: {type: integer}
+        name: {type: string}
+        goal: {$ref: '#/components/schemas/Goal'}
+        num_training_days: {type: integer}
+        experience_level: {$ref: '#/components/schemas/ExperienceLevel'}
+        equipment: {$ref: '#/components/schemas/Equipment'}
+        status: {$ref: '#/components/schemas/PlanStatus'}
+        skipped_groups: {type: array, items: {$ref: '#/components/schemas/SkippedGroup'}}
+        generated_at: {type: string, format: date-time}
+        start_date: {type: [string, 'null'], format: date}
+        end_date: {type: [string, 'null'], format: date}
+        sessions: {type: array, items: {$ref: '#/components/schemas/TrainingSession'}}
+    GenerateDietPlanRequest:
+      type: object
+      required: [meals_per_day]
+      properties:
+        meals_per_day: {type: integer, minimum: 3, maximum: 5}
+        diet_type: {$ref: '#/components/schemas/DietType'}
+        dietary_restrictions: {type: string, maxLength: 500, description: Free-text note shown with the plan}
+    PlannedMealItem:
+      type: object
+      required: [food, grams]
+      properties:
+        food: {$ref: '#/components/schemas/FoodSummary'}
+        grams: {type: number}
+    PlannedMeal:
+      type: object
+      required: [id, day_index, meal_type, meal_order, planned, items]
+      properties:
+        id: {type: integer}
+        day_index: {type: integer, minimum: 1, maximum: 7}
+        meal_type: {$ref: '#/components/schemas/MealType'}
+        meal_order: {type: integer}
+        scheduled_time: {type: [string, 'null'], format: time}
+        planned: {$ref: '#/components/schemas/Macros'}
+        items: {type: array, items: {$ref: '#/components/schemas/PlannedMealItem'}}
+    DietPlan:
+      type: object
+      required: [id, name, goal, diet_type, meals_per_day, status, daily_calorie_target, protein_target_g, fat_target_g, carbs_target_g, generated_at, meals]
+      properties:
+        id: {type: integer}
+        name: {type: string}
+        goal: {$ref: '#/components/schemas/Goal'}
+        diet_type: {$ref: '#/components/schemas/DietType'}
+        meals_per_day: {type: integer}
+        status: {$ref: '#/components/schemas/PlanStatus'}
+        daily_calorie_target: {type: integer}
+        protein_target_g: {type: number}
+        fat_target_g: {type: number}
+        carbs_target_g: {type: number}
+        dietary_restrictions: {type: string}
+        generated_at: {type: string, format: date-time}
+        start_date: {type: [string, 'null'], format: date}
+        end_date: {type: [string, 'null'], format: date}
+        meals: {type: array, items: {$ref: '#/components/schemas/PlannedMeal'}}
+    # ---------- schedule and notifications
+    ReminderInput:
+      type: object
+      required: [type, weekdays, time_of_day]
+      properties:
+        type: {type: string, enum: [meal_reminder, training_reminder]}
+        meal_type: {oneOf: [{$ref: '#/components/schemas/MealType'}, {type: 'null'}], description: Required for meal_reminder, must be null for training_reminder}
+        weekdays: {type: array, minItems: 1, maxItems: 7, uniqueItems: true, items: {$ref: '#/components/schemas/Weekday'}}
+        time_of_day: {type: string, format: time, description: Local time of the user}
+        message: {type: [string, 'null'], maxLength: 200}
+        is_enabled: {type: boolean, default: true}
+    Reminder:
+      allOf:
+        - $ref: '#/components/schemas/ReminderInput'
+        - type: object
+          required: [id]
+          properties: {id: {type: integer}}
+    PushTokenRequest:
+      type: object
+      required: [token, platform]
+      properties:
+        token: {type: string, description: Expo push token}
+        platform: {type: string, enum: [android, ios]}
+    PushToken:
+      type: object
+      required: [id, token, platform]
+      properties:
+        id: {type: integer}
+        token: {type: string}
+        platform: {type: string, enum: [android, ios]}
+    Notification:
+      type: object
+      required: [id, type, title, message, created_at]
+      properties:
+        id: {type: integer}
+        type: {$ref: '#/components/schemas/NotificationType'}
+        title: {type: string}
+        message: {type: string}
+        data: {type: object, additionalProperties: true, description: 'Deep link payload, e.g. {"report_id": 12}'}
+        created_at: {type: string, format: date-time}
+        read_at: {type: [string, 'null'], format: date-time}
+    NotificationPage:
+      type: object
+      required: [items, total, limit, offset]
+      properties:
+        items: {type: array, items: {$ref: '#/components/schemas/Notification'}}
+        total: {type: integer}
+        limit: {type: integer}
+        offset: {type: integer}
+    # ---------- workouts and body
+    WorkoutSetInput:
+      type: object
+      required: [exercise_id, set_number, reps]
+      properties:
+        exercise_id: {type: integer}
+        session_exercise_id: {type: [integer, 'null']}
+        set_number: {type: integer, minimum: 1}
+        reps: {type: integer, minimum: 0, maximum: 200}
+        weight_kg: {type: number, minimum: 0, default: 0}
+        rpe: {type: [integer, 'null'], minimum: 1, maximum: 10}
+        completed: {type: boolean, default: true, description: False when the set could not be completed (a reduce signal)}
+    WorkoutInput:
+      type: object
+      required: [performed_on, sets]
+      properties:
+        client_uuid: {type: string, format: uuid, description: Set by the app; makes retries and sync idempotent}
+        training_session_id: {type: [integer, 'null']}
+        performed_on: {type: string, format: date}
+        started_at: {type: [string, 'null'], format: date-time}
+        finished_at: {type: [string, 'null'], format: date-time}
+        overall_rpe: {type: [integer, 'null'], minimum: 1, maximum: 10}
+        notes: {type: [string, 'null'], maxLength: 1000}
+        sets: {type: array, minItems: 1, items: {$ref: '#/components/schemas/WorkoutSetInput'}}
+    Workout:
+      allOf:
+        - $ref: '#/components/schemas/WorkoutInput'
+        - type: object
+          required: [id, client_uuid, created_at, updated_at]
+          properties:
+            id: {type: integer}
+            client_uuid: {type: string, format: uuid}
+            created_at: {type: string, format: date-time}
+            updated_at: {type: string, format: date-time}
+    WorkoutPage:
+      type: object
+      required: [items, total, limit, offset]
+      properties:
+        items: {type: array, items: {$ref: '#/components/schemas/Workout'}}
+        total: {type: integer}
+        limit: {type: integer}
+        offset: {type: integer}
+    PlanAdjustment:
+      type: object
+      required: [session_exercise_id, exercise_id, reason]
+      properties:
+        session_exercise_id: {type: integer}
+        exercise_id: {type: integer}
+        exercise_name: {type: string}
+        reason: {$ref: '#/components/schemas/AdjustmentReason'}
+        old_sets: {type: [integer, 'null']}
+        new_sets: {type: [integer, 'null']}
+        old_reps: {type: [integer, 'null']}
+        new_reps: {type: [integer, 'null']}
+        old_weight_kg: {type: [number, 'null']}
+        new_weight_kg: {type: [number, 'null']}
+    PersonalRecord:
+      type: object
+      required: [exercise_id, exercise_name, max_weight_kg, max_reps, estimated_1rm_kg, achieved_on]
+      properties:
+        exercise_id: {type: integer}
+        exercise_name: {type: string}
+        max_weight_kg: {type: number}
+        max_reps: {type: integer}
+        estimated_1rm_kg: {type: number}
+        achieved_on: {type: string, format: date}
+    WorkoutResult:
+      type: object
+      required: [workout, adjustments, new_personal_records]
+      properties:
+        workout: {$ref: '#/components/schemas/Workout'}
+        adjustments: {type: array, items: {$ref: '#/components/schemas/PlanAdjustment'}, description: Empty when there was no explicit signal}
+        new_personal_records: {type: array, items: {$ref: '#/components/schemas/PersonalRecord'}}
+    NextSession:
+      type: object
+      required: [session, scheduled_date]
+      properties:
+        session: {$ref: '#/components/schemas/TrainingSession'}
+        scheduled_date: {type: string, format: date}
+    BodyMetricsInput:
+      type: object
+      required: [measured_on, weight_kg]
+      properties:
+        client_uuid: {type: string, format: uuid}
+        measured_on: {type: string, format: date}
+        weight_kg: {type: number, minimum: 30, maximum: 300}
+        chest_cm: {type: [number, 'null'], exclusiveMinimum: 0}
+        waist_cm: {type: [number, 'null'], exclusiveMinimum: 0}
+        thigh_cm: {type: [number, 'null'], exclusiveMinimum: 0}
+        bicep_cm: {type: [number, 'null'], exclusiveMinimum: 0}
+        hip_cm: {type: [number, 'null'], exclusiveMinimum: 0}
+        calf_cm: {type: [number, 'null'], exclusiveMinimum: 0}
+        body_fat_percent: {type: [number, 'null'], minimum: 2, maximum: 70}
+    BodyMetrics:
+      allOf:
+        - $ref: '#/components/schemas/BodyMetricsInput'
+        - type: object
+          required: [id, client_uuid, updated_at]
+          properties:
+            id: {type: integer}
+            client_uuid: {type: string, format: uuid}
+            updated_at: {type: string, format: date-time}
+    # ---------- nutrition
+    RecognitionItem:
+      type: object
+      required: [name, food_item_id, grams, confidence, nutrition, corrected, low_confidence, allergy_warning]
+      properties:
+        name: {type: string}
+        food_item_id: {type: [integer, 'null'], description: Null when the label matched no food; the user must pick one}
+        grams: {type: number}
+        confidence: {type: number, minimum: 0, maximum: 1}
+        nutrition: {$ref: '#/components/schemas/Macros'}
+        corrected: {type: boolean}
+        low_confidence: {type: boolean, description: Confidence below 0.30}
+        allergy_warning: {type: boolean, description: The product shares an allergen with the user}
+    RecognitionItemInput:
+      type: object
+      required: [food_item_id, grams]
+      properties:
+        food_item_id: {type: integer}
+        grams: {type: number, exclusiveMinimum: 0, maximum: 2000}
+    RecognitionItemUpdate:
+      type: object
+      minProperties: 1
+      properties:
+        food_item_id: {type: integer}
+        grams: {type: number, exclusiveMinimum: 0, maximum: 2000}
+    Recognition:
+      type: object
+      required: [id, status, meal_type, photo_url, overall_confidence, items, totals, created_at, expires_at]
+      properties:
+        id: {type: string}
+        status: {type: string, const: pending}
+        meal_type: {$ref: '#/components/schemas/MealType'}
+        photo_url: {type: string}
+        overall_confidence: {type: number, minimum: 0, maximum: 1}
+        items: {type: array, items: {$ref: '#/components/schemas/RecognitionItem'}}
+        totals: {$ref: '#/components/schemas/Macros'}
+        created_at: {type: string, format: date-time}
+        expires_at: {type: string, format: date-time}
+    ConfirmRecognitionRequest:
+      type: object
+      properties:
+        hunger_level_before: {type: [integer, 'null'], minimum: 1, maximum: 10}
+        hunger_level_after: {type: [integer, 'null'], minimum: 1, maximum: 10}
+        planned_meal_id: {type: [integer, 'null']}
+    NutritionLogItemInput:
+      type: object
+      required: [food_item_id, grams]
+      properties:
+        food_item_id: {type: integer}
+        grams: {type: number, exclusiveMinimum: 0, maximum: 2000}
+    NutritionLogInput:
+      type: object
+      required: [log_date, meal_type, items]
+      properties:
+        client_uuid: {type: string, format: uuid}
+        log_date: {type: string, format: date}
+        meal_type: {$ref: '#/components/schemas/MealType'}
+        items: {type: array, minItems: 1, items: {$ref: '#/components/schemas/NutritionLogItemInput'}}
+        hunger_level_before: {type: [integer, 'null'], minimum: 1, maximum: 10}
+        hunger_level_after: {type: [integer, 'null'], minimum: 1, maximum: 10}
+        planned_meal_id: {type: [integer, 'null']}
+    NutritionLogUpdate:
+      type: object
+      minProperties: 1
+      properties:
+        items: {type: array, minItems: 1, items: {$ref: '#/components/schemas/NutritionLogItemInput'}}
+        hunger_level_before: {type: [integer, 'null'], minimum: 1, maximum: 10}
+        hunger_level_after: {type: [integer, 'null'], minimum: 1, maximum: 10}
+    NutritionLogItem:
+      type: object
+      required: [food, grams, nutrition]
+      properties:
+        food: {$ref: '#/components/schemas/FoodSummary'}
+        grams: {type: number}
+        nutrition: {$ref: '#/components/schemas/Macros'}
+    NutritionLog:
+      type: object
+      required: [id, client_uuid, log_date, meal_type, items, totals, logged_at, updated_at]
+      properties:
+        id: {type: integer}
+        client_uuid: {type: string, format: uuid}
+        log_date: {type: string, format: date}
+        meal_type: {$ref: '#/components/schemas/MealType'}
+        meal_photo_url: {type: [string, 'null']}
+        items: {type: array, items: {$ref: '#/components/schemas/NutritionLogItem'}}
+        totals: {$ref: '#/components/schemas/Macros'}
+        hunger_level_before: {type: [integer, 'null']}
+        hunger_level_after: {type: [integer, 'null']}
+        planned_meal_id: {type: [integer, 'null']}
+        recognition_id: {type: [integer, 'null']}
+        logged_at: {type: string, format: date-time}
+        updated_at: {type: string, format: date-time}
+    NutritionLogPage:
+      type: object
+      required: [items, total, limit, offset]
+      properties:
+        items: {type: array, items: {$ref: '#/components/schemas/NutritionLog'}}
+        total: {type: integer}
+        limit: {type: integer}
+        offset: {type: integer}
+    DailySummary:
+      type: object
+      required: [date, totals, logs_count]
+      properties:
+        date: {type: string, format: date}
+        targets: {oneOf: [{$ref: '#/components/schemas/Macros'}, {type: 'null'}], description: Null without an active diet plan}
+        totals: {$ref: '#/components/schemas/Macros'}
+        remaining: {oneOf: [{$ref: '#/components/schemas/Macros'}, {type: 'null'}]}
+        logs_count: {type: integer}
+        avg_hunger_before: {type: [number, 'null']}
+        avg_hunger_after: {type: [number, 'null']}
+    Suggestion:
+      type: object
+      required: [type, nutrition, score]
+      properties:
+        type: {type: string, enum: [food, planned_meal]}
+        food: {oneOf: [{$ref: '#/components/schemas/FoodSummary'}, {type: 'null'}]}
+        grams: {type: [number, 'null']}
+        planned_meal_id: {type: [integer, 'null']}
+        nutrition: {$ref: '#/components/schemas/Macros'}
+        score: {type: number, description: Lower is a better fit}
+    Suggestions:
+      type: object
+      required: [remaining, suggestions]
+      properties:
+        remaining: {$ref: '#/components/schemas/Macros'}
+        message: {type: [string, 'null'], enum: [target_reached, null]}
+        suggestions: {type: array, items: {$ref: '#/components/schemas/Suggestion'}}
+    # ---------- analytics and reports
+    AnalyticsSummary:
+      type: object
+      required: [period, status, from, to]
+      properties:
+        period: {type: string, enum: [week, month, 3months]}
+        status: {type: string, enum: [ok, insufficient_data]}
+        from: {type: string, format: date}
+        to: {type: string, format: date}
+        weight_change_kg: {type: [number, 'null']}
+        total_workouts: {type: [integer, 'null']}
+        avg_workouts_per_week: {type: [number, 'null']}
+        avg_calories: {type: [number, 'null']}
+        tonnage_kg: {type: [number, 'null']}
+        workout_compliance_pct: {type: [number, 'null']}
+        diet_compliance_pct: {type: [number, 'null']}
+        key_lifts:
+          type: array
+          items:
+            type: object
+            required: [exercise_id, exercise_name, first_e1rm_kg, best_e1rm_kg]
+            properties:
+              exercise_id: {type: integer}
+              exercise_name: {type: string}
+              first_e1rm_kg: {type: number}
+              best_e1rm_kg: {type: number}
+    ChartSeries:
+      type: object
+      required: [metric, period, status, points]
+      properties:
+        metric: {type: string}
+        period: {type: string}
+        status: {type: string, enum: [ok, insufficient_data]}
+        points:
+          type: array
+          items:
+            type: object
+            required: [date, value]
+            properties:
+              date: {type: string, format: date}
+              value: {type: number}
+    GoalPrediction:
+      type: object
+      required: [status, warnings]
+      properties:
+        status: {type: string, enum: [ok, no_target, insufficient_data, goal_reached, no_progress, moving_away]}
+        estimated_date: {type: [string, 'null'], format: date}
+        slope_kg_per_week: {type: [number, 'null']}
+        r2: {type: [number, 'null']}
+        target_weight_kg: {type: [number, 'null']}
+        warnings: {type: array, items: {type: string, enum: [low_fit, gaps, low_training_compliance]}}
+    CreateReportRequest:
+      type: object
+      required: [period_start, period_end]
+      properties:
+        period_start: {type: string, format: date}
+        period_end: {type: string, format: date}
+    Report:
+      type: object
+      required: [id, report_type, period_start, period_end, training_volume_kg, training_sessions_completed, training_sessions_planned, irregular_data, is_auto, generated_at]
+      properties:
+        id: {type: integer}
+        report_type: {$ref: '#/components/schemas/ReportType'}
+        period_start: {type: string, format: date}
+        period_end: {type: string, format: date}
+        weight_difference_kg: {type: [number, 'null']}
+        training_volume_kg: {type: number}
+        training_sessions_completed: {type: integer}
+        training_sessions_planned: {type: integer}
+        workout_compliance_pct: {type: [number, 'null']}
+        diet_compliance_pct: {type: [number, 'null']}
+        avg_daily_calories: {type: [integer, 'null']}
+        estimated_goal_completion_date: {type: [string, 'null'], format: date}
+        irregular_data: {type: boolean}
+        is_auto: {type: boolean}
+        details: {type: object, additionalProperties: true, description: Chart series and key lifts}
+        generated_at: {type: string, format: date-time}
+    ReportPage:
+      type: object
+      required: [items, total, limit, offset]
+      properties:
+        items: {type: array, items: {$ref: '#/components/schemas/Report'}}
+        total: {type: integer}
+        limit: {type: integer}
+        offset: {type: integer}
+    # ---------- sync
+    SyncMeta:
+      type: object
+      required: [client_uuid]
+      properties:
+        client_uuid: {type: string, format: uuid}
+        base_updated_at: {type: [string, 'null'], format: date-time, description: The server updated_at the client last saw; null for a new item}
+        deleted: {type: boolean, default: false, description: True to delete the item}
+    SyncWorkout:
+      allOf:
+        - $ref: '#/components/schemas/SyncMeta'
+        - $ref: '#/components/schemas/WorkoutInput'
+    SyncNutritionLog:
+      allOf:
+        - $ref: '#/components/schemas/SyncMeta'
+        - $ref: '#/components/schemas/NutritionLogInput'
+    SyncBodyMetrics:
+      allOf:
+        - $ref: '#/components/schemas/SyncMeta'
+        - $ref: '#/components/schemas/BodyMetricsInput'
+    SyncPushRequest:
+      type: object
+      properties:
+        workouts: {type: array, items: {$ref: '#/components/schemas/SyncWorkout'}}
+        nutrition_logs: {type: array, items: {$ref: '#/components/schemas/SyncNutritionLog'}}
+        body_metrics: {type: array, items: {$ref: '#/components/schemas/SyncBodyMetrics'}}
+    SyncItemResult:
+      type: object
+      required: [type, client_uuid, status]
+      properties:
+        type: {type: string, enum: [workout, nutrition_log, body_metrics]}
+        client_uuid: {type: string, format: uuid}
+        status: {type: string, enum: [applied, unchanged, conflict, rejected]}
+        server_id: {type: [integer, 'null']}
+        server_updated_at: {type: [string, 'null'], format: date-time}
+        error: {oneOf: [{$ref: '#/components/schemas/Error'}, {type: 'null'}]}
+        server_copy: {type: [object, 'null'], additionalProperties: true, description: The stored item, present on conflict}
+    SyncPushResponse:
+      type: object
+      required: [results, cursor]
+      properties:
+        results: {type: array, items: {$ref: '#/components/schemas/SyncItemResult'}}
+        cursor: {type: string}
+    SyncPullResponse:
+      type: object
+      required: [cursor, has_more, workouts, nutrition_logs, body_metrics]
+      properties:
+        cursor: {type: string}
+        has_more: {type: boolean}
+        workouts:
+          type: array
+          items:
+            allOf:
+              - $ref: '#/components/schemas/Workout'
+              - type: object
+                properties: {deleted_at: {type: [string, 'null'], format: date-time}}
+        nutrition_logs:
+          type: array
+          items:
+            allOf:
+              - $ref: '#/components/schemas/NutritionLog'
+              - type: object
+                properties: {deleted_at: {type: [string, 'null'], format: date-time}}
+        body_metrics:
+          type: array
+          items:
+            allOf:
+              - $ref: '#/components/schemas/BodyMetrics'
+              - type: object
+                properties: {deleted_at: {type: [string, 'null'], format: date-time}}

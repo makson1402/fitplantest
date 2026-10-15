@@ -1,0 +1,52 @@
+[project]
+name = "fitplan-backend"
+version = "0.1.0"
+description = "FitPlan Pro backend (FastAPI)"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "alembic>=1.20.0",
+    "bcrypt>=5.0.0",
+    "email-validator>=2.3.0",
+    "fastapi>=0.143.2",
+    "numpy>=2.5.4",
+    "psycopg[binary]>=3.3.6",
+    "pydantic-settings>=2.16.0",
+    "pyjwt>=2.15.1",
+    "python-multipart>=0.0.32",
+    "scipy>=1.18.1",
+    "sqlalchemy[asyncio]>=2.0",
+    "uvicorn[standard]>=0.54.0",
+]
+
+[tool.uv]
+package = false
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "S", "ASYNC"]
+ignore = []
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "S105", "S106"]
+# Table names come from constant lists, SQL is long fixture DDL.
+"tests/db/**" = ["E501", "S608"]
+# Pre-existing domain core: style debt only (long lines, short names), cleaned up in a separate change.
+"app/domain/**" = ["E501", "E731", "E741", "B905", "UP037", "I001", "F401", "F841"]
+"tests/domain/**" = ["E501", "E731", "E741", "B905", "UP037", "I001", "F401", "F841"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+    "ruff>=0.17.1",
+]
