@@ -31,6 +31,8 @@ ignore = []
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S101", "S105", "S106"]
+# Table names come from constant lists, SQL is long fixture DDL.
+"tests/db/**" = ["E501", "S608"]
 # Pre-existing domain core: style debt only (long lines, short names), cleaned up in a separate change.
 "app/domain/**" = ["E501", "E731", "E741", "B905", "UP037", "I001", "F401", "F841"]
 "tests/domain/**" = ["E501", "E731", "E741", "B905", "UP037", "I001", "F401", "F841"]
