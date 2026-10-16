@@ -19,6 +19,7 @@ from app.core.config import Settings
 from app.db.mongo import COLLECTION, create_mongo_client, ensure_indexes
 from app.main import create_app
 from app.repositories.recognitions import DEFAULT_TTL, MongoRecognitionRepository
+from tests.support import NO_STORES
 
 NOW = datetime(2026, 10, 15, 12, 0, tzinfo=UTC)
 ROOT = Path(__file__).resolve().parents[3]
@@ -185,7 +186,8 @@ async def test_referenced_photo_paths_lists_live_documents_only(repo):
 
 async def test_app_reports_mongo_health_and_builds_indexes(db):
     url = _mongo_url()
-    settings = Settings(jwt_secret="test-secret-" + "x" * 32, mongo_url=url, mongo_db=db.name, _env_file=None)
+    settings = Settings(jwt_secret="test-secret-" + "x" * 32, mongo_db=db.name, _env_file=None,
+                        **{**NO_STORES, "mongo_url": url})
     app = create_app(settings)
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
@@ -194,7 +196,8 @@ async def test_app_reports_mongo_health_and_builds_indexes(db):
 
 
 async def test_health_reports_mongo_down_when_unreachable():
-    settings = Settings(jwt_secret="test-secret-" + "x" * 32, mongo_url="mongodb://127.0.0.1:1", _env_file=None)
+    settings = Settings(jwt_secret="test-secret-" + "x" * 32, _env_file=None,
+                        **{**NO_STORES, "mongo_url": "mongodb://127.0.0.1:1"})
     app = create_app(settings)
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:

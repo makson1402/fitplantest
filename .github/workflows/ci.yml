@@ -1,0 +1,98 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Backend, database and seed data
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: fitplan
+          POSTGRES_PASSWORD: ci_password
+          POSTGRES_DB: fitplan
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U fitplan -d fitplan"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+      mongo:
+        image: mongo:7
+        env:
+          MONGO_INITDB_ROOT_USERNAME: fitplan
+          MONGO_INITDB_ROOT_PASSWORD: ci_password
+        ports: ["27017:27017"]
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'db.adminCommand({ping:1}).ok'"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+
+    # Same variable names as .env.example; the backend, Alembic, the seed loader and the DB tests all read these.
+    env:
+      POSTGRES_USER: fitplan
+      POSTGRES_PASSWORD: ci_password
+      POSTGRES_DB: fitplan
+      POSTGRES_HOST: localhost
+      POSTGRES_PORT: "5432"
+      MONGO_INITDB_ROOT_USERNAME: fitplan
+      MONGO_INITDB_ROOT_PASSWORD: ci_password
+      MONGO_PORT: "27017"
+      JWT_SECRET: ci-only-secret-0123456789abcdef0123456789abcdef
+
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+
+      - name: Install dependencies (locked)
+        run: uv sync --frozen
+
+      - name: Lint
+        run: uv run ruff check . ../scripts/validate_seed.py ../database
+
+      - name: Migrate an empty database (upgrade, downgrade, upgrade)
+        run: |
+          uv run alembic upgrade head
+          uv run alembic downgrade base
+          uv run alembic upgrade head
+
+      - name: Load seed data twice (must be idempotent)
+        run: |
+          uv run python ../database/seed/load.py
+          uv run python ../database/seed/load.py
+
+      - name: Validate seed data (DB-06)
+        run: uv run python ../scripts/validate_seed.py
+
+      - name: Exercise coverage report is up to date
+        run: |
+          uv run python ../scripts/validate_seed.py --report ../docs/database/exercise_coverage.md
+          git diff --exit-code -- ../docs/database/exercise_coverage.md
+
+      - name: Algorithm reference vectors
+        run: uv run python ../scripts/algorithms_reference.py --check > /dev/null
+
+      - name: OpenAPI structural check
+        run: uv run python ../scripts/check_openapi.py ../docs/api/openapi.yaml
+
+      - name: Tests
+        run: uv run pytest -q

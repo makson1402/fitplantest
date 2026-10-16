@@ -15,6 +15,7 @@ from app.db.session import create_engine_from_url
 from app.main import create_app
 from app.repositories import EmailAlreadyExists
 from app.repositories.sql import sql_uow_factory
+from tests.support import NO_STORES
 
 NOW = datetime(2026, 10, 15, 12, 0, tzinfo=UTC)
 
@@ -122,7 +123,8 @@ async def test_deleting_user_removes_tokens(uow_factory, engine):
 async def client(pg_engine):
     url = pg_engine.url.render_as_string(hide_password=False)
     settings = Settings(
-        jwt_secret="test-secret-" + "x" * 32, bcrypt_rounds=4, auth_rate_limit=1000, database_url=url, _env_file=None
+        jwt_secret="test-secret-" + "x" * 32, bcrypt_rounds=4, auth_rate_limit=1000, _env_file=None,
+        **{**NO_STORES, "database_url": url},
     )
     app = create_app(settings)  # no injected unit of work: the app builds its own PostgreSQL one
     transport = httpx.ASGITransport(app=app)

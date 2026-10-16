@@ -6,13 +6,14 @@ from fastapi.testclient import TestClient
 from app.core.config import Settings
 from app.main import create_app
 from tests.fakes import FakeClock, Store, uow_factory
+from tests.support import NO_STORES
 
 SECRET = "test-secret-" + "x" * 32
 
 
 @pytest.fixture
 def settings() -> Settings:
-    return Settings(jwt_secret=SECRET, bcrypt_rounds=4, auth_rate_limit=1000, _env_file=None)
+    return Settings(jwt_secret=SECRET, bcrypt_rounds=4, auth_rate_limit=1000, _env_file=None, **NO_STORES)
 
 
 @pytest.fixture
