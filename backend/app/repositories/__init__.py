@@ -16,6 +16,7 @@ from app.repositories.diet import DietRepository
 from app.repositories.library import LibraryRepository
 from app.repositories.profile import ProfileRepository
 from app.repositories.training import TrainingRepository
+from app.repositories.workouts import WorkoutRepository
 
 
 class EmailAlreadyExists(Exception):
@@ -69,6 +70,7 @@ class UnitOfWork(Protocol):
     profile: ProfileRepository
     training: TrainingRepository
     diet: DietRepository
+    workouts: WorkoutRepository
 
     async def commit(self) -> None: ...
     async def rollback(self) -> None: ...
