@@ -24,7 +24,7 @@ def get_clock(request: Request) -> Clock:
 async def get_uow(request: Request) -> UnitOfWorkIterator:
     factory = request.app.state.uow_factory
     if factory is None:
-        raise RuntimeError("persistence is not configured (SQLAlchemy unit of work arrives with DB-01)")
+        raise RuntimeError("persistence is not configured: set DATABASE_URL or POSTGRES_USER/PASSWORD/DB")
     async with factory() as uow:
         yield uow
 
