@@ -14,6 +14,7 @@ from uuid import UUID
 
 from app.repositories.library import LibraryRepository
 from app.repositories.profile import ProfileRepository
+from app.repositories.training import TrainingRepository
 
 
 class EmailAlreadyExists(Exception):
@@ -65,6 +66,7 @@ class UnitOfWork(Protocol):
     refresh_tokens: RefreshTokenRepository
     library: LibraryRepository
     profile: ProfileRepository
+    training: TrainingRepository
 
     async def commit(self) -> None: ...
     async def rollback(self) -> None: ...

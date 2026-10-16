@@ -24,6 +24,7 @@ from app.repositories import (
 )
 from app.repositories.sql_library import SqlLibraryRepository
 from app.repositories.sql_profile import SqlProfileRepository
+from app.repositories.sql_training import SqlTrainingRepository
 
 
 def _user(row: User) -> UserRecord:
@@ -99,6 +100,7 @@ class SqlUnitOfWork:
         self.refresh_tokens = SqlRefreshTokenRepository(session)
         self.library = SqlLibraryRepository(session)
         self.profile = SqlProfileRepository(session)
+        self.training = SqlTrainingRepository(session)
 
     async def commit(self) -> None:
         await self.session.commit()
