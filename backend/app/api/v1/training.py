@@ -54,3 +54,24 @@ async def get_draft(user: CurrentUser, service: Service) -> s.TrainingPlan:
 async def accept(id: Annotated[int, Path(ge=1)], user: CurrentUser, service: Service,  # noqa: A002
                  body: Annotated[s.AcceptPlanRequest, Body()] = None) -> s.TrainingPlan:  # type: ignore[assignment]
     return await service.accept(user, id, body)
+
+
+exercises_router = APIRouter(prefix="/session-exercises", tags=["training"])
+
+
+@exercises_router.patch("/{id}", operation_id="updateSessionExercise",
+                        summary="Edit sets, reps, weight or rest of a planned exercise",
+                        response_model=s.SessionExercise, responses={**_401, **_404, **_409, **_422})
+async def update_session_exercise(id: Annotated[int, Path(ge=1)], body: s.SessionExerciseUpdate,  # noqa: A002
+                                  user: CurrentUser, service: Service) -> s.SessionExercise:
+    return await service.update_exercise(user, id, body)
+
+
+@exercises_router.put("/{id}/swap", operation_id="swapSessionExercise",
+                      summary="Replace the exercise with an alternative of the same muscle group",
+                      description="Rejects with 422 `invalid_swap` when the exercise is ineligible or from another "
+                                  "muscle group.",
+                      response_model=s.SessionExercise, responses={**_401, **_404, **_409, **_422})
+async def swap_session_exercise(id: Annotated[int, Path(ge=1)], body: s.SwapRequest,  # noqa: A002
+                                user: CurrentUser, service: Service) -> s.SessionExercise:
+    return await service.swap_exercise(user, id, body)
