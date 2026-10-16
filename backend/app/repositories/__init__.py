@@ -12,6 +12,8 @@ from datetime import datetime
 from typing import Protocol
 from uuid import UUID
 
+from app.repositories.library import LibraryRepository
+
 
 class EmailAlreadyExists(Exception):
     """Raised by `UserRepository.add` when the unique index on users.email is violated."""
@@ -60,6 +62,7 @@ class RefreshTokenRepository(Protocol):
 class UnitOfWork(Protocol):
     users: UserRepository
     refresh_tokens: RefreshTokenRepository
+    library: LibraryRepository
 
     async def commit(self) -> None: ...
     async def rollback(self) -> None: ...

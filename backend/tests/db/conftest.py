@@ -5,6 +5,7 @@ Skipped automatically when PostgreSQL is not reachable.
 """
 from __future__ import annotations
 
+import importlib.util
 import os
 import uuid
 from pathlib import Path
@@ -39,8 +40,8 @@ def _admin_url() -> URL:
     )
 
 
-@pytest.fixture(scope="session")
-def pg_engine() -> Engine:
+def _throwaway_database(seed: bool):
+    """Create a migrated (optionally seeded) database next to the dev one; drop it afterwards."""
     admin = _admin_url()
     admin_engine = create_engine(admin, isolation_level="AUTOCOMMIT")
     try:
@@ -57,8 +58,32 @@ def pg_engine() -> Engine:
     with engine.begin() as connection:
         cfg.attributes["connection"] = connection
         command.upgrade(cfg, "head")
+    if seed:
+        loader = BACKEND.parent / "database" / "seed" / "load.py"
+        if not loader.exists():
+            pytest.skip("database/ is not part of this checkout")
+        spec = importlib.util.spec_from_file_location("seed_load", loader)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        import psycopg
+
+        with psycopg.connect(admin.set(database=name, drivername="postgresql").render_as_string(hide_password=False)) as c:
+            module.load(c)
+            c.commit()
     yield engine
     engine.dispose()
     with admin_engine.connect() as connection:
         connection.execute(text(f'DROP DATABASE "{name}" WITH (FORCE)'))
     admin_engine.dispose()
+
+
+@pytest.fixture(scope="session")
+def pg_engine() -> Engine:
+    """Empty migrated database. Tests here insert rows of their own (e.g. user deletion)."""
+    yield from _throwaway_database(seed=False)
+
+
+@pytest.fixture(scope="session")
+def seeded_engine() -> Engine:
+    """Migrated database with the reference seeds loaded; tests must treat the reference data as read-only."""
+    yield from _throwaway_database(seed=True)

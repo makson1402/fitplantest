@@ -22,6 +22,7 @@ from app.repositories import (
     UnitOfWorkFactory,
     UserRecord,
 )
+from app.repositories.sql_library import SqlLibraryRepository
 
 
 def _user(row: User) -> UserRecord:
@@ -95,6 +96,7 @@ class SqlUnitOfWork:
         self.session = session
         self.users = SqlUserRepository(session)
         self.refresh_tokens = SqlRefreshTokenRepository(session)
+        self.library = SqlLibraryRepository(session)
 
     async def commit(self) -> None:
         await self.session.commit()
