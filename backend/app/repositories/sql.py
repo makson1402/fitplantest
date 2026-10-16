@@ -23,6 +23,7 @@ from app.repositories import (
     UserRecord,
 )
 from app.repositories.sql_library import SqlLibraryRepository
+from app.repositories.sql_profile import SqlProfileRepository
 
 
 def _user(row: User) -> UserRecord:
@@ -97,6 +98,7 @@ class SqlUnitOfWork:
         self.users = SqlUserRepository(session)
         self.refresh_tokens = SqlRefreshTokenRepository(session)
         self.library = SqlLibraryRepository(session)
+        self.profile = SqlProfileRepository(session)
 
     async def commit(self) -> None:
         await self.session.commit()

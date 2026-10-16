@@ -42,6 +42,11 @@ _DETAIL_CODES = {
     "greater_than": "out_of_range", "greater_than_equal": "out_of_range",
     "less_than": "out_of_range", "less_than_equal": "out_of_range",
     "value_error": "invalid", "enum": "invalid", "literal_error": "invalid",
+    # wrong JSON type or unparsable value
+    "int_parsing": "invalid", "int_type": "invalid", "int_from_float": "invalid", "float_parsing": "invalid",
+    "float_type": "invalid", "finite_number": "invalid", "date_parsing": "invalid", "date_type": "invalid",
+    "date_from_datetime_inexact": "invalid", "bool_parsing": "invalid", "bool_type": "invalid",
+    "string_type": "invalid", "list_type": "invalid",
 }
 
 
