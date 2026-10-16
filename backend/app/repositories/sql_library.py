@@ -17,6 +17,8 @@ from app.db.models.reference import (
     InjuryTypeExcludedExercise,
     MuscleGroup,
 )
+from app.domain.diet import Food as DomainFood
+from app.domain.meal_scaling import Macros
 from app.domain.training import Exercise as DomainExercise
 from app.domain.training import Injury as DomainInjury
 from app.repositories.library import (
@@ -173,3 +175,21 @@ class SqlLibraryRepository:
             .where(FoodItemAllergen.food_item_id == food_id).order_by(Allergen.name))
         record.allergens = [NamedRecord(a.id, a.name, a.description) for (a,) in allergens]
         return record
+
+    async def domain_foods(self) -> list[DomainFood]:
+        allergens: dict[int, set[int]] = {}
+        for food_id, allergen_id in await self.session.execute(
+            select(FoodItemAllergen.food_item_id, FoodItemAllergen.allergen_id)
+        ):
+            allergens.setdefault(food_id, set()).add(allergen_id)
+        rows = await self.session.scalars(select(FoodItem).order_by(FoodItem.id))
+        return [
+            DomainFood(
+                id=f.id, role=f.role,
+                per100=Macros(float(f.calories_per_100g), float(f.protein_per_100g), float(f.fat_per_100g),
+                              float(f.carbs_per_100g)),
+                min_g=f.min_portion_g, max_g=f.max_portion_g, step_g=f.portion_step_g, default_g=f.default_portion_g,
+                meal_types=frozenset(f.suitable_meal_types), allergens=frozenset(allergens.get(f.id, ())),
+                is_vegetarian=f.is_vegetarian, is_vegan=f.is_vegan, is_active=f.is_active)
+            for f in rows
+        ]

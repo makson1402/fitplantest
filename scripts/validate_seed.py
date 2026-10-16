@@ -77,6 +77,11 @@ def food_violations(conn: psycopg.Connection) -> list[str]:
         atwater = 4 * p + 9 * f + 4 * c
         if abs(float(kcal) - float(atwater)) > max(KCAL_TOLERANCE * float(kcal), KCAL_ABS_TOLERANCE):
             problems.append(f"food '{name}': {kcal} kcal but 4P+9F+4C = {float(atwater):.0f}")
+    for (name,) in conn.execute(
+        "SELECT name FROM food_item WHERE min_portion_g % portion_step_g <> 0 OR max_portion_g % portion_step_g <> 0"
+        " OR default_portion_g % portion_step_g <> 0"
+    ).fetchall():
+        problems.append(f"food '{name}': portion bounds must be multiples of portion_step_g (the scaler rounds)")
     for diet, flag in DIETS.items():
         for meal, role_sets in MEAL_ROLES.items():
             for roles in role_sets:
