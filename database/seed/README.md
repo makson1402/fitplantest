@@ -18,6 +18,8 @@ uv run python ../database/seed/load.py
 | `005_exercises.sql` | 112 exercises (all 10 groups, 3 levels, 3 equipment tiers) | DB-04 |
 | `006_exercise_secondary_muscles.sql` | secondary muscle groups (injury rule 3) | DB-04 |
 | `007_injury_excluded_exercises.sql` | exercises each injury type rules out (FR-P2) | DB-04 |
+| `008_foods.sql` | foods per 100 g with categories, allergens, portions, Food-101 labels (base foods and dishes) | DB-05 |
+| `food101_unmapped.txt` | Food-101 labels intentionally without a food row | DB-05 |
 
 Check and coverage report (also run in CI by DB-06):
 
@@ -25,4 +27,4 @@ Check and coverage report (also run in CI by DB-06):
 cd backend && uv run python ../scripts/validate_seed.py --report ../docs/database/exercise_coverage.md
 ```
 
-Foods follow in DB-05. Each exercise/exclusion file aborts the load if it names an unknown muscle group, exercise or injury type.
+Food values were entered from memory (USDA FoodData Central style) and must be spot-checked before release. Each exercise/exclusion file aborts the load if it names an unknown muscle group, exercise or injury type.
