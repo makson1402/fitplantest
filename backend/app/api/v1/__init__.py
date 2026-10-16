@@ -1,6 +1,18 @@
 from fastapi import APIRouter
 
-from app.api.v1 import auth, diet, health, library, metrics, nutrition, nutrition_log, profile, training, workouts
+from app.api.v1 import (
+    analytics,
+    auth,
+    diet,
+    health,
+    library,
+    metrics,
+    nutrition,
+    nutrition_log,
+    profile,
+    training,
+    workouts,
+)
 
 router = APIRouter(prefix="/api/v1")
 router.include_router(health.router)
@@ -15,3 +27,4 @@ router.include_router(diet.router)
 router.include_router(workouts.router)
 router.include_router(metrics.router)
 router.include_router(nutrition_log.router)
+router.include_router(analytics.router)

@@ -22,6 +22,7 @@ from app.repositories import (
     UnitOfWorkFactory,
     UserRecord,
 )
+from app.repositories.sql_analytics import SqlAnalyticsRepository
 from app.repositories.sql_diet import SqlDietRepository
 from app.repositories.sql_library import SqlLibraryRepository
 from app.repositories.sql_metrics import SqlBodyMetricsRepository
@@ -109,6 +110,7 @@ class SqlUnitOfWork:
         self.workouts = SqlWorkoutRepository(session)
         self.metrics = SqlBodyMetricsRepository(session)
         self.nutrition_log = SqlNutritionLogRepository(session)
+        self.analytics = SqlAnalyticsRepository(session)
 
     async def commit(self) -> None:
         await self.session.commit()
