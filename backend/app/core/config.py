@@ -22,6 +22,15 @@ class Settings(BaseSettings):
     postgres_host: str = "localhost"
     postgres_port: int = 5432
 
+    # MongoDB buffer for unconfirmed meal recognitions (DB-02): MONGO_URL, or MONGO_INITDB_ROOT_* shared with compose.
+    mongo_url: str | None = None
+    mongo_initdb_root_username: str | None = None
+    mongo_initdb_root_password: str | None = None
+    mongo_host: str = "localhost"
+    mongo_port: int = 27017
+    mongo_db: str = "fitplan"
+    recognition_ttl_hours: int = Field(default=6, ge=1)
+
     # Auth (FR-U2, decision D4). The secret has no default: the app refuses to start without it.
     jwt_secret: str = Field(min_length=32)
     jwt_algorithm: str = "HS256"
@@ -40,6 +49,15 @@ class Settings(BaseSettings):
         if self.postgres_user and self.postgres_password and self.postgres_db:
             return (f"postgresql+asyncpg://{quote(self.postgres_user)}:{quote(self.postgres_password)}"
                     f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}")
+        return None
+
+    @property
+    def resolved_mongo_url(self) -> str | None:
+        if self.mongo_url:
+            return self.mongo_url
+        if self.mongo_initdb_root_username and self.mongo_initdb_root_password:
+            return (f"mongodb://{quote(self.mongo_initdb_root_username)}:{quote(self.mongo_initdb_root_password)}"
+                    f"@{self.mongo_host}:{self.mongo_port}/?authSource=admin")
         return None
 
 
