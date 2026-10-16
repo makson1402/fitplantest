@@ -15,5 +15,14 @@ uv run python ../database/seed/load.py
 | `002_injury_types.sql` | injury dictionary | DB-03 |
 | `003_allergens.sql` | EU 14 allergens plus lactose | DB-03 |
 | `004_food_categories.sql` | food categories | DB-03 |
+| `005_exercises.sql` | 112 exercises (all 10 groups, 3 levels, 3 equipment tiers) | DB-04 |
+| `006_exercise_secondary_muscles.sql` | secondary muscle groups (injury rule 3) | DB-04 |
+| `007_injury_excluded_exercises.sql` | exercises each injury type rules out (FR-P2) | DB-04 |
 
-Exercises, foods and exercise exclusions follow in DB-04 and DB-05.
+Check and coverage report (also run in CI by DB-06):
+
+```
+cd backend && uv run python ../scripts/validate_seed.py --report ../docs/database/exercise_coverage.md
+```
+
+Foods follow in DB-05. Each exercise/exclusion file aborts the load if it names an unknown muscle group, exercise or injury type.
