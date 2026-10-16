@@ -56,6 +56,10 @@ class SqlProfileRepository:
         row = await self.session.scalar(stmt, execution_options={"populate_existing": True})
         return _profile(row)
 
+    async def update_weight(self, user_id: int, weight_kg, tdee_kcal: int) -> None:
+        await self.session.execute(update(UserProfile).where(UserProfile.user_id == user_id).values(
+            weight_kg=weight_kg, tdee_kcal=tdee_kcal))
+
     # ------------------------------------------------------------------ injuries
     async def list_injuries(self, user_id: int) -> list[InjuryRecord]:
         rows = await self.session.execute(
