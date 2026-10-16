@@ -93,14 +93,14 @@ async def test_put_replaces_the_profile_and_recomputes_tdee(client):
     assert (await client.get(f"{BASE}/profile", headers=h)).json() == second  # replaced, not merged
 
 
-async def test_offered_pal_values_with_three_decimals_are_stored_with_two(client):
-    """Spec gap, see docs/questions.md: the column holds 2 decimals, so 1.375 is stored as 1.38 and TDEE uses 1.38."""
+@pytest.mark.parametrize("pal", [1.2, 1.375, 1.55, 1.725, 1.9])
+async def test_all_offered_pal_values_are_stored_exactly(client, pal):
+    """The five levels the app offers (algorithms.md section 0), including the two with three decimals."""
     h = await _user(client)
-    body = (await client.put(f"{BASE}/profile", json={**PROFILE, "activity_level_pal": 1.375}, headers=h)).json()
-    assert body["activity_level_pal"] == 1.38 and body["tdee_kcal"] == tdee("male", 80, 180, 30, 1.38)
+    body = (await client.put(f"{BASE}/profile", json={**PROFILE, "activity_level_pal": pal}, headers=h)).json()
+    assert body["activity_level_pal"] == pal and body["tdee_kcal"] == tdee("male", 80, 180, 30, pal)
     again = (await client.get(f"{BASE}/profile", headers=h)).json()
-    assert again["tdee_kcal"] == tdee(again["sex"], again["weight_kg"], again["height_cm"], again["age"],
-                                      again["activity_level_pal"])  # the stored profile is self-consistent
+    assert again["activity_level_pal"] == pal and again["tdee_kcal"] == body["tdee_kcal"]
 
 
 @pytest.mark.parametrize(("field", "ok", "bad"), [

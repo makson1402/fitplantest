@@ -204,7 +204,7 @@ CREATE TABLE user_profile (
   sex                sex_t NOT NULL,
   weight_kg          numeric(5,2) NOT NULL CHECK (weight_kg BETWEEN 30 AND 300),
   height_cm          smallint NOT NULL CHECK (height_cm BETWEEN 120 AND 250),
-  activity_level_pal numeric(3,2) NOT NULL CHECK (activity_level_pal BETWEEN 1.20 AND 2.40),
+  activity_level_pal numeric(4,3) NOT NULL CHECK (activity_level_pal BETWEEN 1.20 AND 2.40),  -- 3 decimals: the app offers 1.375 and 1.725
   goal               goal_t NOT NULL,
   target_weight_kg   numeric(5,2) CHECK (target_weight_kg BETWEEN 30 AND 300),   -- needed by FR-R4
   experience_level   experience_level_t NOT NULL,

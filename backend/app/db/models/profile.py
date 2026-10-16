@@ -27,7 +27,7 @@ class UserProfile(Base):
     sex: Mapped[str] = mapped_column(sex_t)
     weight_kg: Mapped[Decimal] = mapped_column(Numeric(5, 2))
     height_cm: Mapped[int] = mapped_column(SmallInteger)
-    activity_level_pal: Mapped[Decimal] = mapped_column(Numeric(3, 2))
+    activity_level_pal: Mapped[Decimal] = mapped_column(Numeric(4, 3))
     goal: Mapped[str] = mapped_column(goal_t)
     target_weight_kg: Mapped[Decimal | None] = mapped_column(Numeric(5, 2))
     experience_level: Mapped[str] = mapped_column(experience_level_t)
