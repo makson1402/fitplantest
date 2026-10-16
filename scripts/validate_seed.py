@@ -1,4 +1,4 @@
-"""Validate the seed data and report exercise coverage (DB-04; food checks are added with DB-05).
+"""Validate the seed data and report exercise coverage (DB-04) and food data (DB-05).
 
     cd backend && uv run python ../scripts/validate_seed.py            # check, exit 1 on a violation
     cd backend && uv run python ../scripts/validate_seed.py --report ../docs/database/exercise_coverage.md
@@ -20,6 +20,22 @@ LEVELS = ("beginner", "intermediate", "advanced")
 TIERS = ("none", "home", "gym")
 MIN_PER_GROUP = 8  # docs/agents/data.md: at least 8 exercises per main muscle group
 MIN_EXCLUSIONS_PER_INJURY = 5
+MIN_FOODS = 150  # docs/agents/data.md
+MIN_CHOICES_PER_ROLE = 2  # the diet generator rotates items (algorithms.md 5.3); one item gives no variety
+KCAL_TOLERANCE = 0.12  # |kcal - (4P + 9F + 4C)| <= max(12 % of kcal, 15 kcal): fibre explains the rest
+KCAL_ABS_TOLERANCE = 15
+FOOD101_LABELS = ROOT / "docs" / "database" / "food101_labels.txt"
+FOOD101_UNMAPPED = ROOT / "database" / "seed" / "food101_unmapped.txt"
+ANIMAL_ALLERGENS = {"milk", "lactose", "eggs", "fish", "crustaceans", "molluscs"}  # never in a vegan food
+MEAT_ALLERGENS = {"fish", "crustaceans", "molluscs"}  # never in a vegetarian food
+# role sets needed per meal type (docs/algorithms.md 5.3)
+MEAL_ROLES = {
+    "breakfast": [("protein", "dairy"), ("carb",), ("fruit",), ("fat",)],
+    "lunch": [("protein",), ("carb",), ("vegetable",), ("fat",)],
+    "dinner": [("protein",), ("carb",), ("vegetable",), ("fat",)],
+    "snack": [("fruit", "dairy")],
+}
+DIETS = {"omnivore": "true", "vegetarian": "is_vegetarian", "vegan": "is_vegan"}
 
 
 def _loader():
@@ -46,6 +62,53 @@ def coverage(conn: psycopg.Connection) -> dict[str, dict[tuple[str, str], int]]:
     return result
 
 
+def _label_file(path: Path) -> list[str]:
+    return [ln.strip() for ln in path.read_text(encoding="utf-8").splitlines() if ln.strip() and not ln.startswith("#")]
+
+
+def food_violations(conn: psycopg.Connection) -> list[str]:
+    problems: list[str] = []
+    n = conn.execute("SELECT count(*) FROM food_item WHERE is_active").fetchone()[0]
+    if n < MIN_FOODS:
+        problems.append(f"only {n} active foods, need at least {MIN_FOODS}")
+    for name, kcal, p, f, c in conn.execute(
+        "SELECT name, calories_per_100g, protein_per_100g, fat_per_100g, carbs_per_100g FROM food_item"
+    ).fetchall():
+        atwater = 4 * p + 9 * f + 4 * c
+        if abs(float(kcal) - float(atwater)) > max(KCAL_TOLERANCE * float(kcal), KCAL_ABS_TOLERANCE):
+            problems.append(f"food '{name}': {kcal} kcal but 4P+9F+4C = {float(atwater):.0f}")
+    for diet, flag in DIETS.items():
+        for meal, role_sets in MEAL_ROLES.items():
+            for roles in role_sets:
+                count = conn.execute(
+                    f"SELECT count(*) FROM food_item WHERE is_active AND {flag} AND role::text = ANY(%s)"  # noqa: S608
+                    " AND %s::meal_type_t = ANY(suitable_meal_types)", (list(roles), meal)).fetchone()[0]
+                if count < MIN_CHOICES_PER_ROLE:
+                    problems.append(f"{diet} {meal}: only {count} food(s) for role {'/'.join(roles)}")
+    for (name,) in conn.execute(
+        "SELECT a.name FROM allergen a WHERE NOT EXISTS (SELECT 1 FROM food_item_allergen x WHERE x.allergen_id = a.id)"
+    ).fetchall():
+        problems.append(f"allergen '{name}' is not attached to any food")
+    for name, vegan, vegetarian, allergens in conn.execute(
+        "SELECT fi.name, fi.is_vegan, fi.is_vegetarian, array_agg(a.name) FROM food_item fi "
+        "JOIN food_item_allergen x ON x.food_item_id = fi.id JOIN allergen a ON a.id = x.allergen_id GROUP BY 1, 2, 3"
+    ).fetchall():
+        if vegan and ANIMAL_ALLERGENS & set(allergens):
+            problems.append(f"food '{name}' is marked vegan but has allergens {sorted(allergens)}")
+        if vegetarian and MEAT_ALLERGENS & set(allergens):
+            problems.append(f"food '{name}' is marked vegetarian but has allergens {sorted(allergens)}")
+    # Food-101: every label is mapped or listed as intentionally unmapped, never both
+    labels = set(_label_file(FOOD101_LABELS)) if FOOD101_LABELS.exists() else set()
+    unmapped = set(_label_file(FOOD101_UNMAPPED)) if FOOD101_UNMAPPED.exists() else set()
+    mapped = {r[0] for r in conn.execute("SELECT recognition_label FROM food_item WHERE recognition_label IS NOT NULL")}
+    if labels:
+        problems += [f"Food-101 label '{x}' is neither mapped nor unmapped" for x in sorted(labels - mapped - unmapped)]
+        problems += [f"Food-101 label '{x}' is both mapped and unmapped" for x in sorted(mapped & unmapped)]
+        problems += [f"recognition_label '{x}' is not a Food-101 label" for x in sorted(mapped - labels)]
+        problems += [f"unmapped entry '{x}' is not a Food-101 label" for x in sorted(unmapped - labels)]
+    return problems
+
+
 def violations(conn: psycopg.Connection) -> list[str]:
     problems: list[str] = []
     cov = coverage(conn)
@@ -69,7 +132,7 @@ def violations(conn: psycopg.Connection) -> list[str]:
         "LEFT JOIN injury_type_excluded_exercise x ON x.injury_type_id = it.id GROUP BY it.name "
         "HAVING count(x.exercise_id) < %s", (MIN_EXCLUSIONS_PER_INJURY,)).fetchall()
     problems += [f"injury type '{n}': only {c} excluded exercises" for n, c in sparse]
-    return problems
+    return problems + food_violations(conn)
 
 
 def report(conn: psycopg.Connection) -> str:

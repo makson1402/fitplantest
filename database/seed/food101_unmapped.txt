@@ -1,0 +1,18 @@
+# Food-101 labels that have NO food_item.recognition_label yet (intentionally unmapped, DB-05).
+# The AI model returns them as candidates with foodItemId = null and the user picks a food in the review step
+# (docs/algorithms.md section 11). To map one: add a dish row with that recognition_label to 008_foods.sql and
+# delete the line here. scripts/validate_seed.py checks that every label in docs/database/food101_labels.txt is
+# either mapped or listed here, never both. Reason for all: no reliable per-100 g reference entered yet.
+beef_carpaccio
+beef_tartare
+beignets
+bibimbap
+bread_pudding
+cannoli
+chocolate_mousse
+croque_madame
+foie_gras
+onion_rings
+poutine
+red_velvet_cake
+strawberry_shortcake
