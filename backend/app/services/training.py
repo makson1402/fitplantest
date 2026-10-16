@@ -16,6 +16,7 @@ from app.repositories.training import (
     PlanRecord,
     SessionExerciseContext,
     SessionExerciseRecord,
+    SessionRecord,
 )
 from app.schemas import training as s
 from app.schemas.library import MuscleGroupRef
@@ -39,6 +40,12 @@ def serialize_exercise(e: SessionExerciseRecord) -> s.SessionExercise:
         rest_seconds=e.rest_seconds)
 
 
+def serialize_session(ses: SessionRecord) -> s.TrainingSession:
+    return s.TrainingSession(
+        id=ses.id, session_order=ses.session_order, name=ses.name, weekday=ses.weekday,
+        estimated_duration_min=ses.estimated_duration_min, exercises=[serialize_exercise(e) for e in ses.exercises])
+
+
 def serialize(plan: PlanRecord) -> s.TrainingPlan:
     return s.TrainingPlan(
         id=plan.id, name=plan.name, goal=plan.goal, num_training_days=plan.num_training_days,
@@ -46,10 +53,7 @@ def serialize(plan: PlanRecord) -> s.TrainingPlan:
         skipped_groups=[s.SkippedGroup(muscle_group=MuscleGroupRef(id=i, name=n), reason="injury")
                         for i, n in plan.skipped_groups],
         generated_at=plan.generated_at, start_date=plan.start_date, end_date=plan.end_date,
-        sessions=[s.TrainingSession(
-            id=ses.id, session_order=ses.session_order, name=ses.name, weekday=ses.weekday,
-            estimated_duration_min=ses.estimated_duration_min,
-            exercises=[serialize_exercise(e) for e in ses.exercises]) for ses in plan.sessions])
+        sessions=[serialize_session(ses) for ses in plan.sessions])
 
 
 def insufficient(exc: InsufficientExercises) -> AppError:
