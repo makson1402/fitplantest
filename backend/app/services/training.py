@@ -66,7 +66,8 @@ def insufficient(exc: InsufficientExercises) -> AppError:
     return AppError(422, "insufficient_exercises", "Not enough exercises for this plan", details)
 
 
-def _today(user: UserRecord, clock: Clock) -> date:
+def today_for(user: UserRecord, clock: Clock) -> date:
+    """Today's date in the user's time zone (UTC when the stored name is not a valid IANA zone)."""
     try:
         zone = ZoneInfo(user.timezone)
     except (ZoneInfoNotFoundError, ValueError):
@@ -122,7 +123,7 @@ class TrainingPlanService:
             raise not_found("Plan not found")
         if plan.status != "draft":
             raise AppError(409, "conflict", f"Only a draft plan can be accepted (this plan is {plan.status})")
-        start = (body.start_date if body and body.start_date else None) or _today(user, self.clock)
+        start = (body.start_date if body and body.start_date else None) or today_for(user, self.clock)
         await self.uow.training.archive_active(user.id)
         await self.uow.training.activate(user.id, plan_id, start, start + timedelta(days=PLAN_DURATION_DAYS))
         await self.uow.commit()

@@ -99,4 +99,6 @@ MEAL_SLOTS = {
 }
 SCALING_WEIGHTS = (3.0, 2.0, 1.0, 1.5)       # kcal, protein, fat, carbs
 DAY_TOLERANCE = {"kcal": 0.05, "protein": 0.10, "fat": 0.15, "carbs": 0.10}
-DIET_MAX_ATTEMPTS = 5
+DIET_MAX_ATTEMPTS = 5          # algorithms.md 5.5
+DIET_EXTRA_ATTEMPTS = 12       # amendment to 5.5: stage 2 attempts after the first 5 (docs/questions.md, B-12)
+DIET_MEAL_CANDIDATES = 8       # amendment to 5.5: rotation offsets tried per meal in stage 2

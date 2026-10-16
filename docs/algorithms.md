@@ -165,6 +165,15 @@ Worked example (lunch for the first target above, share 0.35): meal target 1077.
 ### 5.5 Acceptance
 Each day's totals must be within kcal ±5 %, protein ±10 %, fat ±15 %, carbs ±10 % of the daily targets. If a day misses, retry with the next item indices (up to 5 attempts); if it still misses, fail with 422 `insufficient_foods` and the roles that could not be satisfied.
 
+**Amendment (task B-12, to be confirmed at review).** With the real food database (about 210 foods) the five attempts above almost never succeed: 1 708 of 1 728 tested combinations of profile, goal, diet type, meals per day and allergens failed. Causes: a `dish` item has fixed proportions, so a dish day (days 3 and 6 of the rotation in 5.3) rarely meets all four macros, and picking all meals of a day blindly by rotation rarely lands inside the tolerance. The search is therefore extended **after** the 5 attempts above, which stay unchanged (stage 1), so every plan stage 1 finds is the same as before:
+
+Stage 2, at most `DIET_EXTRA_ATTEMPTS` attempts (constant in `app/domain/constants.py`, 12):
+1. **No `dish` item.** The day uses the standard composition of 5.3 (allowed there: a `dish` item *may* replace protein + carb).
+2. **Best of `DIET_MEAL_CANDIDATES` (8) rotation offsets per meal.** For every meal the 8 consecutive offsets of the rotation are scaled with 5.4 and the meal whose scaled totals are closest to its target (the objective of 5.4) is kept; the search over offsets stops early when a meal is within about 1 % on every macro (`GOOD_MEAL_ERROR`).
+3. **Carry-over of errors.** A meal aims at its share of what is still missing from the day (daily target minus the totals of the earlier meals, spread over the remaining meals by their shares), not at its fixed share, so the rounding and portion-limit errors of earlier meals are made up by later ones.
+
+The tolerances of this section are **not** relaxed. If a day still misses, the answer is 422 `insufficient_foods` as before. Measured on the seeded database (4 profiles x 6 goals x 3 meal counts): omnivore, vegetarian and vegan plans without allergies are always found (216 of 216); an omnivore is served for every single allergen tested (gluten, milk, eggs, nuts, soy); a vegan or vegetarian diet without gluten or soy fails only for the heaviest profile tested (120 kg, more than 200 g protein), and combinations that leave very few foods (four or eight allergens at once on a vegan or vegetarian diet) mostly fail. Typical time per plan 0.2 s, worst case about 2 s.
+
 ## 6. Adaptation and progression (FR-A2, A4, A5)
 
 Runs when a workout is saved with a `training_session_id`. Implemented by `adapt` in the reference script. Changes are written to `session_exercise` (they apply the next time that session occurs) and recorded in `plan_adjustment`.

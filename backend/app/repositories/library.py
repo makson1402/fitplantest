@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Protocol
 
+from app.domain.diet import Food as DomainFood
 from app.domain.training import Exercise as DomainExercise
 from app.domain.training import Injury as DomainInjury
 
@@ -92,3 +93,7 @@ class LibraryRepository(Protocol):
                          offset: int) -> tuple[list[FoodRecord], int]: ...
 
     async def get_food(self, food_id: int) -> FoodRecord | None: ...
+
+    async def domain_foods(self) -> list[DomainFood]:
+        """All foods (the generator filters inactive ones itself) with their allergen ids."""
+        ...

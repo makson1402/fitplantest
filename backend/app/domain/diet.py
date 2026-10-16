@@ -3,7 +3,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from .constants import DAY_TOLERANCE, DIET_MAX_ATTEMPTS, MEAL_SLOTS
+from .constants import (DAY_TOLERANCE, DIET_EXTRA_ATTEMPTS, DIET_MAX_ATTEMPTS, DIET_MEAL_CANDIDATES, MEAL_SLOTS,
+                        SCALING_WEIGHTS)
 from .meal_scaling import ZERO, Macros, Portionable, macros_for, scale_meal
 from .nutrition import Targets
 
@@ -79,6 +80,7 @@ def _roles_for(meal_type: str, day: int, slot: int, has_dish: bool) -> list[tupl
 
 
 _OPTIONAL = {("snack", ("fat",))}
+GOOD_MEAL_ERROR = 5e-4  # about 1 % off on every macro in the objective of 5.4
 
 
 def _pick(pool: list[Food], day: int, slot: int, attempt: int, prev_id: int | None) -> Food:
@@ -120,36 +122,86 @@ def generate_diet(targets: Targets, meals_per_day: int, foods: list[Food], diet_
     meals: list[PlannedMeal] = []
     prev: dict[tuple[int, int], int | None] = {}
     daily = Macros(targets.target_kcal, targets.protein_g, targets.fat_g, targets.carbs_g)
-    for day in range(1, 8):
-        for attempt in range(DIET_MAX_ATTEMPTS):
-            day_meals, chosen_ids = [], {}
-            ok = True
-            for i, (mt, share) in enumerate(slots):
-                by_role = pools[mt]
+    scaled: dict[tuple, tuple[list[int], Macros]] = {}
+
+    def meal_error(total: Macros, target: Macros) -> float:
+        """The scaling objective of 5.4 (weighted squared relative deviation) of a scaled meal."""
+        t = (target.kcal, target.protein, target.fat, target.carbs)
+        v = (total.kcal, total.protein, total.fat, total.carbs)
+        return sum(w * ((vi - ti) / max(ti, 1e-9)) ** 2 for w, vi, ti in zip(SCALING_WEIGHTS, v, t))
+
+    def try_day(day: int, attempt: int, allow_dish: bool, candidates: int = 1):
+        """One candidate day: choose items by the rotation of 5.3, scale them (5.4). (meals, chosen ids) when the
+        totals are within the daily tolerance (5.5), otherwise None.
+
+        With `candidates` > 1 (stage 2) every meal tries that many consecutive rotation offsets and keeps the one
+        whose scaled meal is closest to its own target, so a day no longer depends on all meals being lucky."""
+        day_meals, chosen_ids = [], {}
+        so_far = ZERO
+        for i, (mt, share) in enumerate(slots):
+            by_role = pools[mt]
+            if candidates > 1:
+                # stage 2: a meal aims at its share of what is still missing from the day, so the rounding and
+                # portion-limit errors of the earlier meals are made up by the later ones
+                left = sum(sh for _, sh in slots[i:])
+                missing = Macros(daily.kcal - so_far.kcal, daily.protein - so_far.protein, daily.fat - so_far.fat,
+                                 daily.carbs - so_far.carbs)
+                meal_target = missing.scaled(share / left)
+                meal_target = Macros(*(max(v, 0.05 * d) for v, d in zip(
+                    (meal_target.kcal, meal_target.protein, meal_target.fat, meal_target.carbs),
+                    (daily.kcal * share, daily.protein * share, daily.fat * share, daily.carbs * share))))
+            else:
+                meal_target = daily.scaled(share)
+            groups = _roles_for(mt, day, i, allow_dish and bool(by_role.get("dish")))
+            best = None
+            for c in range(candidates):
                 chosen: list[Food] = []
-                for gi, group in enumerate(_roles_for(mt, day, i, bool(by_role.get("dish")))):
+                ids: dict[tuple[int, int], int] = {}
+                for gi, group in enumerate(groups):
                     pool = sorted([f for r in group for f in by_role.get(r, [])], key=lambda f: f.id)
                     if not pool:
                         if (mt, group) in _OPTIONAL:
                             continue
-                        ok = False
-                        break
-                    chosen.append(_pick(pool, day, i + gi, attempt, prev.get((i, gi))))
-                    chosen_ids[(i, gi)] = chosen[-1].id
-                if not ok:
-                    break
-                grams, tot = scale_meal([Portionable(f.per100, f.min_g, f.max_g, f.step_g) for f in chosen],
-                                        daily.scaled(share))
-                items = tuple(PlannedMealItem(f.id, g, macros_for(f.per100, g)) for f, g in zip(chosen, grams))
-                day_meals.append(PlannedMeal(day, mt, items, tot))
-            if ok:
-                total = ZERO
-                for m in day_meals:
-                    total = total + m.totals
-                if _within(total, targets):
-                    meals.extend(day_meals)
-                    prev = chosen_ids
-                    break
-        else:
-            raise InsufficientFoods([], f"day {day}: totals stay outside tolerance after {DIET_MAX_ATTEMPTS} attempts")
+                        return None
+                    chosen.append(_pick(pool, day, i + gi, attempt * candidates + c, prev.get((i, gi))))
+                    ids[(i, gi)] = chosen[-1].id
+                key = (tuple(f.id for f in chosen), round(meal_target.kcal), round(meal_target.protein),
+                       round(meal_target.fat), round(meal_target.carbs))  # same items and target: same result
+                if key not in scaled:
+                    scaled[key] = scale_meal([Portionable(f.per100, f.min_g, f.max_g, f.step_g) for f in chosen],
+                                             meal_target)
+                grams, tot = scaled[key]
+                error = meal_error(tot, meal_target)
+                if best is None or error < best[0]:
+                    best = (error, chosen, grams, tot, ids)
+                if candidates > 1 and error <= GOOD_MEAL_ERROR:
+                    break  # close enough on all four macros: no need to try further offsets
+            _, chosen, grams, tot, ids = best
+            chosen_ids.update(ids)
+            items = tuple(PlannedMealItem(f.id, g, macros_for(f.per100, g)) for f, g in zip(chosen, grams))
+            day_meals.append(PlannedMeal(day, mt, items, tot))
+            so_far = so_far + tot
+        total = ZERO
+        for m in day_meals:
+            total = total + m.totals
+        return (day_meals, chosen_ids) if _within(total, targets) else None
+
+    for day in range(1, 8):
+        # Stage 1: the 5 attempts of algorithms.md 5.5, unchanged. Stage 2 (amendment, see algorithms.md 5.5):
+        # per-meal best of DIET_MEAL_CANDIDATES rotation offsets, and no `dish` item (a composite food has fixed
+        # proportions and rarely meets all four macros). Plans found by stage 1 are the same as before.
+        found = None
+        for attempt in range(DIET_MAX_ATTEMPTS):
+            found = try_day(day, attempt, True)
+            if found:
+                break
+        for attempt in range(DIET_EXTRA_ATTEMPTS if not found else 0):
+            found = try_day(day, attempt, False, DIET_MEAL_CANDIDATES)
+            if found:
+                break
+        if not found:
+            raise InsufficientFoods(
+                [], f"day {day}: totals stay outside tolerance after {DIET_MAX_ATTEMPTS + DIET_EXTRA_ATTEMPTS} attempts")
+        meals.extend(found[0])
+        prev = found[1]
     return DietPlan(tuple(meals))

@@ -12,6 +12,7 @@ from datetime import datetime
 from typing import Protocol
 from uuid import UUID
 
+from app.repositories.diet import DietRepository
 from app.repositories.library import LibraryRepository
 from app.repositories.profile import ProfileRepository
 from app.repositories.training import TrainingRepository
@@ -67,6 +68,7 @@ class UnitOfWork(Protocol):
     library: LibraryRepository
     profile: ProfileRepository
     training: TrainingRepository
+    diet: DietRepository
 
     async def commit(self) -> None: ...
     async def rollback(self) -> None: ...
