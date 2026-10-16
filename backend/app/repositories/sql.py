@@ -10,7 +10,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import insert, select, text, update
+from sqlalchemy import delete, insert, select, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
@@ -33,7 +33,8 @@ from app.repositories.sql_workouts import SqlWorkoutRepository
 
 
 def _user(row: User) -> UserRecord:
-    return UserRecord(row.id, row.email, row.password_hash, row.timezone, row.is_active, row.created_at)
+    return UserRecord(row.id, row.email, row.password_hash, row.timezone, row.is_active, row.created_at, row.name,
+                      row.surname)
 
 
 def _token(row: RefreshToken) -> RefreshTokenRecord:
@@ -66,6 +67,27 @@ class SqlUserRepository:
             raise
         return _user(row)
 
+    async def update_fields(self, user_id: int, values: dict) -> UserRecord:
+        row = await self.session.scalar(update(User).where(User.id == user_id).values(**values).returning(User),
+                                        execution_options={"populate_existing": True})
+        return _user(row)
+
+    async def set_email(self, user_id: int, email: str) -> UserRecord:
+        try:
+            row = await self.session.scalar(update(User).where(User.id == user_id).values(email=email)
+                                            .returning(User), execution_options={"populate_existing": True})
+        except IntegrityError as exc:
+            if "users_email_key" in str(exc.orig):
+                raise EmailAlreadyExists(email) from exc
+            raise
+        return _user(row)
+
+    async def set_password_hash(self, user_id: int, password_hash: str) -> None:
+        await self.session.execute(update(User).where(User.id == user_id).values(password_hash=password_hash))
+
+    async def delete(self, user_id: int) -> None:
+        await self.session.execute(delete(User).where(User.id == user_id))
+
 
 class SqlRefreshTokenRepository:
     def __init__(self, session: AsyncSession):
@@ -94,6 +116,12 @@ class SqlRefreshTokenRepository:
     async def revoke_family(self, family_id: UUID, at: datetime) -> None:
         await self.session.execute(
             update(RefreshToken).where(RefreshToken.family_id == family_id, RefreshToken.revoked_at.is_(None))
+            .values(revoked_at=at)
+        )
+
+    async def revoke_all_for_user(self, user_id: int, at: datetime) -> None:
+        await self.session.execute(
+            update(RefreshToken).where(RefreshToken.user_id == user_id, RefreshToken.revoked_at.is_(None))
             .values(revoked_at=at)
         )
 

@@ -11,6 +11,7 @@ from app.api.v1 import (
     nutrition_log,
     profile,
     training,
+    users,
     workouts,
 )
 
@@ -28,3 +29,4 @@ router.include_router(workouts.router)
 router.include_router(metrics.router)
 router.include_router(nutrition_log.router)
 router.include_router(analytics.router)
+router.include_router(users.router)

@@ -31,6 +31,9 @@ class Settings(BaseSettings):
     mongo_db: str = "fitplan"
     recognition_ttl_hours: int = Field(default=6, ge=1)
 
+    # Directory of the stored meal photos (`meals/<user id>/...`); None = photos are not stored (yet).
+    photo_dir: str | None = None
+
     # Auth (FR-U2, decision D4). The secret has no default: the app refuses to start without it.
     jwt_secret: str = Field(min_length=32)
     jwt_algorithm: str = "HS256"

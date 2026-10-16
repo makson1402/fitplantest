@@ -34,6 +34,8 @@ class UserRecord:
     timezone: str
     is_active: bool
     created_at: datetime
+    name: str | None = None
+    surname: str | None = None
 
 
 @dataclass
@@ -53,6 +55,20 @@ class UserRepository(Protocol):
     async def get_by_email(self, email: str) -> UserRecord | None: ...
     async def add(self, *, email: str, password_hash: str | None, timezone: str) -> UserRecord: ...
 
+    async def update_fields(self, user_id: int, values: dict) -> UserRecord:
+        """Update name, surname or timezone (the keys are column names)."""
+        ...
+
+    async def set_email(self, user_id: int, email: str) -> UserRecord:
+        """Raises `EmailAlreadyExists` when another account has that email."""
+        ...
+
+    async def set_password_hash(self, user_id: int, password_hash: str) -> None: ...
+
+    async def delete(self, user_id: int) -> None:
+        """Delete the user; every table that references it cascades (FR-U5)."""
+        ...
+
 
 class RefreshTokenRepository(Protocol):
     async def add(self, *, user_id: int, family_id: UUID, token_hash: str, expires_at: datetime,
@@ -64,6 +80,7 @@ class RefreshTokenRepository(Protocol):
 
     async def revoke(self, token_id: int, at: datetime) -> None: ...
     async def revoke_family(self, family_id: UUID, at: datetime) -> None: ...
+    async def revoke_all_for_user(self, user_id: int, at: datetime) -> None: ...
 
 
 class UnitOfWork(Protocol):
