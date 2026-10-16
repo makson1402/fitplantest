@@ -12,6 +12,7 @@ from datetime import datetime
 from typing import Protocol
 from uuid import UUID
 
+from app.repositories.analytics import AnalyticsRepository
 from app.repositories.diet import DietRepository
 from app.repositories.library import LibraryRepository
 from app.repositories.metrics import BodyMetricsRepository
@@ -75,6 +76,7 @@ class UnitOfWork(Protocol):
     workouts: WorkoutRepository
     metrics: BodyMetricsRepository
     nutrition_log: NutritionLogRepository
+    analytics: AnalyticsRepository
 
     async def commit(self) -> None: ...
     async def rollback(self) -> None: ...
