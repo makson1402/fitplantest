@@ -13,6 +13,7 @@ from typing import Protocol
 from uuid import UUID
 
 from app.repositories.library import LibraryRepository
+from app.repositories.profile import ProfileRepository
 
 
 class EmailAlreadyExists(Exception):
@@ -63,6 +64,7 @@ class UnitOfWork(Protocol):
     users: UserRepository
     refresh_tokens: RefreshTokenRepository
     library: LibraryRepository
+    profile: ProfileRepository
 
     async def commit(self) -> None: ...
     async def rollback(self) -> None: ...
