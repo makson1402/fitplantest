@@ -13,6 +13,7 @@ from app.repositories.sql_library import _exercise
 from app.repositories.training import (
     NewSession,
     PlanRecord,
+    SessionExerciseContext,
     SessionExerciseRecord,
     SessionRecord,
 )
@@ -53,6 +54,30 @@ class SqlTrainingRepository:
 
     async def get_plan_by_status(self, user_id: int, status: str) -> PlanRecord | None:
         return await self._load(TrainingPlan.user_id == user_id, TrainingPlan.status == status)
+
+    async def get_session_exercise(self, user_id: int, session_exercise_id: int) -> SessionExerciseContext | None:
+        row = (await self.session.execute(
+            select(SessionExercise, Exercise, MuscleGroup.name, TrainingSession, TrainingPlan)
+            .join(Exercise, Exercise.id == SessionExercise.exercise_id)
+            .join(MuscleGroup, MuscleGroup.id == Exercise.main_muscle_group_id)
+            .join(TrainingSession, TrainingSession.id == SessionExercise.training_session_id)
+            .join(TrainingPlan, TrainingPlan.id == TrainingSession.training_plan_id)
+            .where(SessionExercise.id == session_exercise_id, TrainingPlan.user_id == user_id)
+            .execution_options(populate_existing=True))).first()
+        if row is None:
+            return None
+        se, exercise, group, session, plan = row
+        siblings = list(await self.session.scalars(
+            select(SessionExercise.exercise_id).where(SessionExercise.training_session_id == session.id)))
+        record = SessionExerciseRecord(se.id, se.position, _exercise(exercise, group), se.original_exercise_id,
+                                       se.planned_sets, se.planned_reps, se.planned_weight_kg, se.rest_seconds)
+        return SessionExerciseContext(record, plan.id, plan.status, plan.experience_level, plan.equipment,
+                                      session.id, siblings)
+
+    async def update_session_exercise(self, session_exercise_id: int, changes: dict) -> None:
+        if changes:
+            await self.session.execute(
+                update(SessionExercise).where(SessionExercise.id == session_exercise_id).values(**changes))
 
     async def archive_active(self, user_id: int) -> None:
         await self.session.execute(update(TrainingPlan).where(

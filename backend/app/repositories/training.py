@@ -66,6 +66,19 @@ class PlanRecord:
     sessions: list[SessionRecord] = field(default_factory=list)
 
 
+@dataclass
+class SessionExerciseContext:
+    """A planned exercise with what its plan and session say about it (for editing and swapping)."""
+
+    record: SessionExerciseRecord
+    plan_id: int
+    plan_status: str
+    plan_experience_level: str
+    plan_equipment: str
+    session_id: int
+    session_exercise_ids: list[int]  # exercise ids currently in the same session (including this one)
+
+
 class TrainingRepository(Protocol):
     async def lock_user(self, user_id: int) -> None:
         """Serialise the plan operations of one user (generate, accept) for the rest of the transaction."""
@@ -84,5 +97,14 @@ class TrainingRepository(Protocol):
         ...
 
     async def get_plan_by_status(self, user_id: int, status: str) -> PlanRecord | None: ...
+
+    async def get_session_exercise(self, user_id: int, session_exercise_id: int) -> SessionExerciseContext | None:
+        """None when it does not exist or its plan belongs to another user."""
+        ...
+
+    async def update_session_exercise(self, session_exercise_id: int, changes: dict) -> None:
+        """`changes` uses the column names of `session_exercise`."""
+        ...
+
     async def archive_active(self, user_id: int) -> None: ...
     async def activate(self, user_id: int, plan_id: int, start_date: date, end_date: date) -> None: ...

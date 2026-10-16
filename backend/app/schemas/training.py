@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.schemas.library import Equipment, ExerciseSummary, ExperienceLevel, MuscleGroupRef
 from app.schemas.profile import Goal
@@ -35,6 +35,28 @@ class SessionExercise(BaseModel):
     planned_reps: int = Field(ge=1, le=50)
     planned_weight_kg: float | None = Field(description="Null until the first logged workout")
     rest_seconds: int = Field(ge=0, le=600)
+
+
+class SessionExerciseUpdate(BaseModel):
+    """PATCH body (contract: at least one property). Only the fields the client sent are applied; the defaults are
+    never used or validated, so an explicit `null` is a 422 except for `planned_weight_kg`, which may be cleared."""
+
+    model_config = ConfigDict(json_schema_extra={"minProperties": 1})
+
+    planned_sets: int = Field(default=None, ge=1, le=10)  # type: ignore[assignment]
+    planned_reps: int = Field(default=None, ge=1, le=50)  # type: ignore[assignment]
+    planned_weight_kg: float | None = Field(default=None, ge=0, le=9999.99, allow_inf_nan=False)
+    rest_seconds: int = Field(default=None, ge=0, le=600)  # type: ignore[assignment]
+
+    @model_validator(mode="after")
+    def at_least_one_field(self) -> SessionExerciseUpdate:
+        if not self.model_fields_set:
+            raise ValueError("At least one field is required")
+        return self
+
+
+class SwapRequest(BaseModel):
+    exercise_id: int
 
 
 class TrainingSession(BaseModel):
