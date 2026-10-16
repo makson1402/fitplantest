@@ -13,6 +13,7 @@ dependencies = [
     "psycopg[binary]>=3.3.6",
     "pydantic-settings>=2.16.0",
     "pyjwt>=2.15.1",
+    "pymongo>=4.19.0",
     "python-multipart>=0.0.32",
     "scipy>=1.18.1",
     "sqlalchemy[asyncio]>=2.0",
