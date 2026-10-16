@@ -11,12 +11,12 @@ from app.schemas import library as lib
 from app.schemas import profile as s
 from app.services.library import food_summary
 
-_TWO = Decimal("0.01")
+_TWO, _THREE = Decimal("0.01"), Decimal("0.001")
 
 
-def _dec(value: float) -> Decimal:
-    """Exact decimal of the JSON number, rounded half up to the 2 places the columns store."""
-    return Decimal(str(value)).quantize(_TWO, rounding=ROUND_HALF_UP)
+def _dec(value: float, places: Decimal = _TWO) -> Decimal:
+    """Exact decimal of the JSON number, rounded half up to the places the column stores."""
+    return Decimal(str(value)).quantize(places, rounding=ROUND_HALF_UP)
 
 
 def unknown_ids(field: str, missing: set[int]) -> AppError:
@@ -53,8 +53,8 @@ class ProfileService:
         return _profile(record)
 
     async def put_profile(self, user: UserRecord, body: s.ProfileInput) -> s.Profile:
-        """Create or replace the profile; TDEE is recomputed from the stored (rounded) values every time."""
-        weight, pal = _dec(body.weight_kg), _dec(body.activity_level_pal)
+        """Create or replace the profile; TDEE is recomputed from the stored values every time."""
+        weight, pal = _dec(body.weight_kg), _dec(body.activity_level_pal, _THREE)  # PAL: 1.375, 1.725
         values = {
             "age": body.age, "sex": body.sex, "weight_kg": weight, "height_cm": body.height_cm,
             "activity_level_pal": pal, "goal": body.goal, "experience_level": body.experience_level,

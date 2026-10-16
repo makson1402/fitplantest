@@ -13,6 +13,15 @@ Behavioural tests: `scripts/test_schema.sql`. ERD below is generated from a live
 - One active and one draft training plan and diet plan per user (partial unique indexes). `skipped_muscle_group_ids` on `training_plan` records groups skipped for FR-P3 or injuries.
 - Value ranges (CHECK): weight 30-300, age 16-100, height 120-250, RPE 1-10, hunger 1-10, `day_index` 1-7.
 
+## Changes after the first release of this schema
+
+Migrations are numbered in `backend/alembic/versions/`; `schema_postgres.sql` always shows the schema after the latest one (a test compares it with `alembic upgrade head`).
+
+| Migration | Change |
+| - | ------ |
+| 0001 | initial schema (this file as first reviewed) |
+| 0002 | `user_profile.activity_level_pal` from `numeric(3,2)` to `numeric(4,3)`, so the offered PAL values 1.375 and 1.725 are stored exactly |
+
 ## Changes against the old MySQL ERD
 
 
