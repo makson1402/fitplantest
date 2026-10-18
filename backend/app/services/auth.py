@@ -12,7 +12,13 @@ from uuid import UUID, uuid4
 from app.core.clock import Clock
 from app.core.config import Settings
 from app.core.errors import AppError, unauthorized
-from app.core.security import create_access_token, hash_password, hash_refresh_token, new_refresh_token, verify_password
+from app.core.security import (
+    create_access_token,
+    hash_password_async,
+    hash_refresh_token,
+    new_refresh_token,
+    verify_password_async,
+)
 from app.repositories import EmailAlreadyExists, UnitOfWork, UserRecord
 from app.schemas.auth import TokenPair
 
@@ -31,7 +37,7 @@ class AuthService:
         email = normalize_email(email)
         if await self.uow.users.get_by_email(email) is not None:
             raise AppError(409, "email_taken", "Email is already registered")
-        password_hash = hash_password(password, self.settings.bcrypt_rounds)
+        password_hash = await hash_password_async(password, self.settings.bcrypt_rounds)
         try:
             user = await self.uow.users.add(email=email, password_hash=password_hash, timezone=timezone or "UTC")
         except EmailAlreadyExists:  # concurrent registration with the same email
@@ -45,7 +51,7 @@ class AuthService:
     async def login(self, email: str, password: str, device_label: str | None) -> TokenPair:
         user = await self.uow.users.get_by_email(normalize_email(email))
         # verify_password runs bcrypt even for unknown users, so both failures look and take the same.
-        password_ok = verify_password(password, user.password_hash if user else None)
+        password_ok = await verify_password_async(password, user.password_hash if user else None)
         if user is None or not password_ok or not user.is_active:
             raise unauthorized("invalid_credentials", "Invalid email or password")
         pair = await self._issue(user.id, uuid4(), device_label)

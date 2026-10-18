@@ -4,7 +4,11 @@ from __future__ import annotations
 import json
 import logging
 import re
+from contextvars import ContextVar
 from datetime import UTC, datetime
+
+# Set by the request-id middleware for the duration of a request; every log line of the request carries it.
+request_id_var: ContextVar[str | None] = ContextVar("request_id", default=None)
 
 _EMAIL = re.compile(r"([A-Za-z0-9._%+-])[A-Za-z0-9._%+-]*@([A-Za-z0-9.-]+\.[A-Za-z]{2,})")
 _JWT = re.compile(r"\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+")
@@ -27,6 +31,9 @@ class JsonFormatter(logging.Formatter):
             "logger": record.name,
             "msg": redact(record.getMessage()),
         }
+        request_id = request_id_var.get()
+        if request_id:
+            entry["request_id"] = request_id
         if record.exc_info:
             entry["exc"] = redact(self.formatException(record.exc_info))
         return json.dumps(entry, ensure_ascii=False)

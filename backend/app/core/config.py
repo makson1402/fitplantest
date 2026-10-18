@@ -45,6 +45,24 @@ class Settings(BaseSettings):
     auth_rate_limit: int = 10
     auth_rate_window_seconds: int = 60
 
+    # Hardening and capacity (B-29). See backend/README.md for how the numbers add up.
+    # Connection pool of ONE worker process: at most db_pool_size + db_max_overflow connections to PostgreSQL.
+    db_pool_size: int = Field(default=10, ge=1)
+    db_max_overflow: int = Field(default=10, ge=0)
+    db_pool_timeout_seconds: float = Field(default=10, gt=0)  # waiting for a free connection, then 503
+    db_pool_recycle_seconds: int = Field(default=1800, ge=-1)
+    # Request body limits in bytes; the photo upload (POST /meals/recognitions) has its own, larger limit.
+    max_body_bytes: int = Field(default=1024 * 1024, ge=1024)
+    max_upload_bytes: int = Field(default=9 * 1024 * 1024, ge=1024)
+    # Comma separated origins allowed by CORS (the mobile app does not need CORS; this is for a web client or tools).
+    cors_origins: str = ""
+    # Strict-Transport-Security max-age in seconds; 0 = do not send (set it only behind HTTPS).
+    hsts_max_age_seconds: int = Field(default=0, ge=0)
+
+    @property
+    def cors_origin_list(self) -> list[str]:
+        return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+
     @property
     def resolved_database_url(self) -> str | None:
         if self.database_url:
