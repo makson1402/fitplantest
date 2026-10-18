@@ -11,7 +11,7 @@ from pymongo.asynchronous.database import AsyncDatabase
 from app.core.clock import Clock
 from app.core.config import Settings
 from app.core.errors import AppError, unauthorized
-from app.core.security import hash_password, verify_password
+from app.core.security import hash_password_async, verify_password_async
 from app.repositories import EmailAlreadyExists, UnitOfWork, UserRecord
 from app.repositories.recognitions import MongoRecognitionRepository
 from app.schemas import account as s
@@ -45,14 +45,14 @@ class AccountService:
                       timezone=record.timezone, has_profile=has_profile, created_at=record.created_at)
 
     @staticmethod
-    def _check_password(user: UserRecord, password: str) -> None:
+    async def _check_password(user: UserRecord, password: str) -> None:
         """Wrong current password: 401 `invalid_credentials`. Accounts without a password (social sign-in) cannot use
         the password-protected operations (docs/questions.md, B-05)."""
         if user.password_hash is None:
             raise AppError(422, "validation_error", "Invalid input", [
                 {"field": "current_password", "code": "no_password",
                  "message": "This account has no password (social sign-in)"}])
-        if not verify_password(password, user.password_hash):
+        if not await verify_password_async(password, user.password_hash):
             raise unauthorized("invalid_credentials", "The current password is incorrect")
 
     async def me(self, user: UserRecord) -> s.User:
@@ -68,7 +68,7 @@ class AccountService:
         return await self._user(record)
 
     async def change_email(self, user: UserRecord, body: s.ChangeEmailRequest) -> s.User:
-        self._check_password(user, body.current_password)
+        await self._check_password(user, body.current_password)
         email = normalize_email(body.new_email)
         if email == user.email:  # nothing to change
             return await self._user(user)
@@ -86,8 +86,9 @@ class AccountService:
     async def change_password(self, user: UserRecord, body: s.ChangePasswordRequest) -> None:
         """Sets the new password and signs the user out everywhere: every refresh token is revoked (the access token
         of this device works until it expires, at most 15 minutes)."""
-        self._check_password(user, body.current_password)
-        await self.uow.users.set_password_hash(user.id, hash_password(body.new_password, self.settings.bcrypt_rounds))
+        await self._check_password(user, body.current_password)
+        new_hash = await hash_password_async(body.new_password, self.settings.bcrypt_rounds)
+        await self.uow.users.set_password_hash(user.id, new_hash)
         await self.uow.refresh_tokens.revoke_all_for_user(user.id, self.clock.now())
         await self.uow.commit()
         log.info("password changed user=%s", user.id)
@@ -100,7 +101,7 @@ class AccountService:
             if not body.current_password:
                 raise AppError(422, "validation_error", "Invalid input", [
                     {"field": "current_password", "code": "required", "message": "Required for this account"}])
-            self._check_password(user, body.current_password)
+            await self._check_password(user, body.current_password)
         await self.uow.training.lock_user(user.id)
         await self.uow.users.delete(user.id)
         await self.uow.commit()

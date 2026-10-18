@@ -10,5 +10,9 @@ def async_database_url(url: str) -> str:
     return make_url(url).set(drivername="postgresql+asyncpg").render_as_string(hide_password=False)
 
 
-def create_engine_from_url(url: str, *, pool_size: int = 10) -> AsyncEngine:
-    return create_async_engine(async_database_url(url), pool_size=pool_size, pool_pre_ping=True)
+def create_engine_from_url(url: str, *, pool_size: int = 10, max_overflow: int = 10, pool_timeout: float = 10,
+                           pool_recycle: int = 1800) -> AsyncEngine:
+    """`pool_size + max_overflow` is the most connections this process opens; further requests wait `pool_timeout`
+    seconds for a free one."""
+    return create_async_engine(async_database_url(url), pool_size=pool_size, max_overflow=max_overflow,
+                               pool_timeout=pool_timeout, pool_recycle=pool_recycle, pool_pre_ping=True)

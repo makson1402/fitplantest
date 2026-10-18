@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 
 import bcrypt
 import jwt
+from anyio import to_thread
 
 from app.core.errors import unauthorized
 
@@ -34,6 +35,15 @@ def verify_password(password: str, password_hash: str | None) -> bool:
     candidate = password_hash.encode("ascii") if password_hash else _DUMMY_HASH
     ok = bcrypt.checkpw(password.encode("utf-8"), candidate)
     return ok and password_hash is not None
+
+
+async def hash_password_async(password: str, rounds: int) -> str:
+    """bcrypt takes ~250 ms at 12 rounds: it runs on a worker thread so that the event loop keeps serving requests."""
+    return await to_thread.run_sync(hash_password, password, rounds)
+
+
+async def verify_password_async(password: str, password_hash: str | None) -> bool:
+    return await to_thread.run_sync(verify_password, password, password_hash)
 
 
 @dataclass(frozen=True)

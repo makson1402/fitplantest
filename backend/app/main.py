@@ -13,6 +13,7 @@ from app.core.clock import Clock, SystemClock
 from app.core.config import Settings, get_settings
 from app.core.errors import install_error_handlers
 from app.core.logging import configure_logging
+from app.core.middleware import install_middleware
 from app.core.rate_limit import RateLimiter
 from app.db.mongo import create_mongo_client, ensure_indexes, mongo_probe
 from app.db.session import create_engine_from_url
@@ -33,7 +34,9 @@ def create_app(settings: Settings | None = None, *, uow_factory: UnitOfWorkFacto
     health_probes = dict(health_probes or {})
     database_url = settings.resolved_database_url
     if uow_factory is None and database_url:
-        engine = create_engine_from_url(database_url)
+        engine = create_engine_from_url(
+            database_url, pool_size=settings.db_pool_size, max_overflow=settings.db_max_overflow,
+            pool_timeout=settings.db_pool_timeout_seconds, pool_recycle=settings.db_pool_recycle_seconds)
         uow_factory = sql_uow_factory(engine)
         health_probes.setdefault("postgres", partial(postgres_probe, engine))
 
@@ -69,5 +72,6 @@ def create_app(settings: Settings | None = None, *, uow_factory: UnitOfWorkFacto
     app.state.auth_rate_limiter = RateLimiter(settings.auth_rate_limit, settings.auth_rate_window_seconds)
 
     install_error_handlers(app)
+    install_middleware(app, settings)
     app.include_router(v1_router)
     return app

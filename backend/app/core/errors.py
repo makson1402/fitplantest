@@ -8,6 +8,7 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import DataError, DBAPIError
+from sqlalchemy.exc import TimeoutError as PoolTimeoutError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 log = logging.getLogger(__name__)
@@ -100,5 +101,12 @@ def install_error_handlers(app: FastAPI) -> None:
         log.warning("database rejected a value on %s %s: %s", request.method, request.url.path, type(exc.orig).__name__)
         return JSONResponse(error_body("validation_error", "Invalid input", [
             {"code": "invalid_value", "message": "A value is outside what can be stored"}]), status_code=422)
+
+    @app.exception_handler(PoolTimeoutError)
+    async def _pool_exhausted(request: Request, exc: PoolTimeoutError) -> JSONResponse:
+        """No connection became free within the pool timeout: the server is overloaded, the client may retry."""
+        log.error("database connection pool exhausted on %s %s", request.method, request.url.path)
+        return JSONResponse(error_body("internal_error", "The server is busy, try again shortly"), status_code=503,
+                            headers={"Retry-After": "1"})
 
     app.add_exception_handler(Exception, _unhandled)
