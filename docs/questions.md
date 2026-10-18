@@ -68,3 +68,9 @@ Agents append here when a spec is silent or contradictory. Format: `- [task id] 
 - Decision: `training_sessions_planned` = sessions per week of the active plan x the days of the period the plan covers / 7, rounded (the denominator of the workout compliance).
 - Decision: CSV layout is `section,key,value` (UTF-8 with BOM); the PDF uses the built-in Latin-1 fonts, so characters outside Latin-1 print as `?` (reports are in English). Dependencies added: `fpdf2` (runtime), `pypdf` (tests only).
 - Open for B-26: the weekly job should call `ReportService.create(..., is_auto=True)`; today `create` replaces an existing report, B-26 needs insert-if-absent.
+
+## B-22 (meal suggestions)
+- Decision: the plan repeats every 7 days from `start_date`; today's plan day is `((date - start_date) mod 7) + 1`, so a plan older than 7 days offers the meals of the matching day (algorithms.md 5.3 says "7 days", not what happens after).
+- Decision: a planned meal counts as eaten when a live nutrition log of that day has `planned_meal_id` set to it; it is then not suggested again.
+- Decision: planned meals whose foods are no longer allowed for the user (an allergy or exclusion added after the plan was made, or an inactive food) are not offered, so the "never an allergen" guarantee holds for old plans too.
+- Decision: `remaining` in the answer is never negative (a day over the target shows 0); the ranking itself uses the raw difference.

@@ -9,7 +9,6 @@ deletePushToken
 deleteRecognitionItem
 discardRecognition
 forgotPassword
-getMealSuggestions
 getRecognition
 listNotifications
 listReminders
