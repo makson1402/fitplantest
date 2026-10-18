@@ -5,11 +5,12 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Path, Query
+from fastapi import APIRouter, Depends, Query
 
 from app.api.deps import CurrentUser, UowDep, get_current_user
 from app.schemas import library as s
 from app.schemas.common import Error
+from app.schemas.ids import Id32, OffsetQuery, PathId32
 from app.schemas.library import Equipment, ExperienceLevel, FoodRole
 from app.services.library import LibraryService
 
@@ -22,7 +23,7 @@ _404 = {404: {"model": Error, "description": "Not found (also used for rows of o
 _422 = {422: {"model": Error, "description": "Invalid input or a business rule failed"}}
 
 Limit = Annotated[int, Query(ge=1, le=100)]
-Offset = Annotated[int, Query(ge=0)]
+Offset = OffsetQuery
 
 
 def get_library_service(uow: UowDep) -> LibraryService:
@@ -62,8 +63,8 @@ async def list_food_categories(service: Service) -> list[s.FoodCategory]:
              responses={**_401, **_422})
 async def list_exercises(
     service: Service,
-    q: Annotated[str | None, Query(description="Case-insensitive name search", max_length=100)] = None,
-    muscle_group_id: int | None = None,
+    q: Annotated[str | None, Query(description="Case-insensitive name search")] = None,
+    muscle_group_id: Id32 | None = None,
     equipment: Equipment | None = None,
     difficulty_level: ExperienceLevel | None = None,
     limit: Limit = 20,
@@ -75,14 +76,14 @@ async def list_exercises(
 
 @library.get("/exercises/{id}", operation_id="getExercise", summary="Exercise with text instructions",
              response_model=s.Exercise, responses={**_401, **_404, **_422})
-async def get_exercise(id: Annotated[int, Path(ge=1)], service: Service) -> s.Exercise:  # noqa: A002
+async def get_exercise(id: PathId32, service: Service) -> s.Exercise:  # noqa: A002
     return await service.get_exercise(id)
 
 
 @library.get("/exercises/{id}/alternatives", operation_id="listExerciseAlternatives",
              summary="Same-muscle-group alternatives that suit the user", response_model=list[s.ExerciseSummary],
              responses={**_401, **_404, **_422})
-async def list_exercise_alternatives(id: Annotated[int, Path(ge=1)], user: CurrentUser,  # noqa: A002
+async def list_exercise_alternatives(id: PathId32, user: CurrentUser,  # noqa: A002
                                      service: Service) -> list[s.ExerciseSummary]:
     return await service.alternatives(user.id, id)
 
@@ -92,8 +93,8 @@ async def list_exercise_alternatives(id: Annotated[int, Path(ge=1)], user: Curre
              responses={**_401, **_422})
 async def list_foods(
     service: Service,
-    q: Annotated[str | None, Query(max_length=100)] = None,
-    category_id: int | None = None,
+    q: str | None = None,
+    category_id: Id32 | None = None,
     role: FoodRole | None = None,
     limit: Limit = 20,
     offset: Offset = 0,
@@ -103,5 +104,5 @@ async def list_foods(
 
 @library.get("/foods/{id}", operation_id="getFood", summary="Food with nutrition values per 100 g",
              response_model=s.Food, responses={**_401, **_404, **_422})
-async def get_food(id: Annotated[int, Path(ge=1)], service: Service) -> s.Food:  # noqa: A002
+async def get_food(id: PathId32, service: Service) -> s.Food:  # noqa: A002
     return await service.get_food(id)

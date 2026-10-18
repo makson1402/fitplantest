@@ -3,12 +3,13 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Path, Response
+from fastapi import APIRouter, Depends, Response
 
 from app.api.deps import CurrentUser, UowDep
 from app.schemas import library as lib
 from app.schemas import profile as s
 from app.schemas.common import Error
+from app.schemas.ids import PathId64
 from app.services.profile import ProfileService
 
 router = APIRouter(prefix="/users/me", tags=["account"])
@@ -23,7 +24,7 @@ def get_profile_service(uow: UowDep) -> ProfileService:
 
 
 Service = Annotated[ProfileService, Depends(get_profile_service)]
-InjuryId = Annotated[int, Path(ge=1)]
+InjuryId = PathId64
 
 
 @router.get("/profile", operation_id="getProfile", summary="Biometric profile", response_model=s.Profile,

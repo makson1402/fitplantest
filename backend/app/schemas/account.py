@@ -3,16 +3,16 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Literal
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, EmailStr, Field, field_validator
 
-from app.schemas.auth import Email, check_new_password
+from app.core.timezones import is_valid_timezone
+from app.schemas.auth import check_new_password
 
 
 class User(BaseModel):
     id: int
-    email: str
+    email: str = Field(json_schema_extra={"format": "email"})
     name: str | None = None
     surname: str | None = None
     timezone: str
@@ -31,15 +31,13 @@ class UserUpdate(BaseModel):
     @field_validator("timezone")
     @classmethod
     def _iana(cls, value: str) -> str:
-        try:
-            ZoneInfo(value)
-        except (ZoneInfoNotFoundError, ValueError) as exc:
-            raise ValueError("Unknown IANA time zone") from exc
+        if not is_valid_timezone(value):
+            raise ValueError("Unknown IANA time zone")
         return value
 
 
 class ChangeEmailRequest(BaseModel):
-    new_email: Email
+    new_email: EmailStr  # the validator itself limits the length to 254
     current_password: str
 
 

@@ -7,11 +7,12 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.schemas.diet import Macros, MealType
+from app.schemas.ids import Id32, Id64
 from app.schemas.library import FoodSummary
 
 
 class NutritionLogItemInput(BaseModel):
-    food_item_id: int
+    food_item_id: Id32
     grams: float = Field(gt=0, le=2000, allow_inf_nan=False)
 
 
@@ -23,7 +24,7 @@ class NutritionLogInput(BaseModel):
     items: list[NutritionLogItemInput] = Field(min_length=1)
     hunger_level_before: int | None = Field(default=None, ge=1, le=10)
     hunger_level_after: int | None = Field(default=None, ge=1, le=10)
-    planned_meal_id: int | None = None
+    planned_meal_id: Id64 | None = None
 
 
 class NutritionLogUpdate(BaseModel):

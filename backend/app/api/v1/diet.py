@@ -3,11 +3,12 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Body, Depends, Path
+from fastapi import APIRouter, Body, Depends
 
 from app.api.deps import ClockDep, CurrentUser, UowDep
 from app.schemas import diet as s
 from app.schemas.common import Error
+from app.schemas.ids import PathId64
 from app.schemas.training import AcceptPlanRequest
 from app.services.diet import DietPlanService
 
@@ -49,6 +50,6 @@ async def get_draft(user: CurrentUser, service: Service) -> s.DietPlan:
 
 @router.post("/{id}/accept", operation_id="acceptDietPlan", summary="Accept the draft diet plan",
              response_model=s.DietPlan, responses={**_401, **_404, **_409, **_422})
-async def accept(id: Annotated[int, Path(ge=1)], user: CurrentUser, service: Service,  # noqa: A002
+async def accept(id: PathId64, user: CurrentUser, service: Service,  # noqa: A002
                  body: Annotated[AcceptPlanRequest, Body()] = None) -> s.DietPlan:  # type: ignore[assignment]
     return await service.accept(user, id, body)

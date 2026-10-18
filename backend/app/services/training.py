@@ -3,10 +3,11 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 from decimal import ROUND_HALF_UP, Decimal
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+from zoneinfo import ZoneInfo
 
 from app.core.clock import Clock
 from app.core.errors import AppError, not_found
+from app.core.timezones import load_timezone
 from app.domain.constants import EQUIPMENT, LEVELS, PLAN_DURATION_DAYS
 from app.domain.training import InsufficientExercises, eligible_exercises, generate_training_plan
 from app.repositories import UnitOfWork, UserRecord
@@ -72,10 +73,7 @@ def insufficient(exc: InsufficientExercises) -> AppError:
 
 def today_for(user: UserRecord, clock: Clock) -> date:
     """Today's date in the user's time zone (UTC when the stored name is not a valid IANA zone)."""
-    try:
-        zone = ZoneInfo(user.timezone)
-    except (ZoneInfoNotFoundError, ValueError):
-        zone = ZoneInfo("UTC")
+    zone = load_timezone(user.timezone) or ZoneInfo("UTC")
     return clock.now().astimezone(zone).date()
 
 
@@ -148,6 +146,9 @@ class TrainingPlanService:
                               body: s.SessionExerciseUpdate) -> s.SessionExercise:
         """Edit sets, reps, weight or rest; only the fields the client sent change."""
         context = await self._editable(user, session_exercise_id)
+        if body.planned_weight_kg is not None and body.planned_weight_kg > 9999.99:  # numeric(6,2)
+            raise AppError(422, "validation_error", "Invalid input", [
+                {"field": "planned_weight_kg", "code": "out_of_range", "message": "At most 9999.99 kg"}])
         changes = {k: v for k, v in body.model_dump().items() if k in body.model_fields_set}
         if changes.get("planned_weight_kg") is not None:
             changes["planned_weight_kg"] = Decimal(str(changes["planned_weight_kg"])).quantize(

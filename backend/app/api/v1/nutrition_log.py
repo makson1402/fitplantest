@@ -4,11 +4,12 @@ from __future__ import annotations
 from datetime import date
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Path, Query, Response
+from fastapi import APIRouter, Depends, Query, Response
 
 from app.api.deps import ClockDep, CurrentUser, UowDep
 from app.schemas import nutrition_log as s
 from app.schemas.common import Error
+from app.schemas.ids import OffsetQuery, PathId64
 from app.services.nutrition_log import NutritionLogService
 
 router = APIRouter(tags=["nutrition"])
@@ -24,7 +25,7 @@ def get_service(uow: UowDep, clock: ClockDep) -> NutritionLogService:
 
 
 Service = Annotated[NutritionLogService, Depends(get_service)]
-LogId = Annotated[int, Path(ge=1)]
+LogId = PathId64
 
 
 @router.post("/nutrition-logs", operation_id="createNutritionLog", summary="Log a meal manually or from the plan",
@@ -39,7 +40,7 @@ async def list_logs(user: CurrentUser, service: Service,
                     date_from: Annotated[date | None, Query(alias="from")] = None,
                     date_to: Annotated[date | None, Query(alias="to")] = None,
                     limit: Annotated[int, Query(ge=1, le=100)] = 20,
-                    offset: Annotated[int, Query(ge=0)] = 0) -> s.NutritionLogPage:
+                    offset: OffsetQuery = 0) -> s.NutritionLogPage:
     return await service.list(user, date_from, date_to, limit, offset)
 
 

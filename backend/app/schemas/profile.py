@@ -6,6 +6,7 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field
 
+from app.schemas.ids import Id32
 from app.schemas.library import Allergen, Equipment, ExperienceLevel, FoodSummary
 
 Sex = Literal["male", "female", "other"]
@@ -35,8 +36,8 @@ class Profile(ProfileInput):
 
 
 class InjuryInput(BaseModel):
-    injury_type_id: int
-    affected_muscle_group_id: int
+    injury_type_id: Id32
+    affected_muscle_group_id: Id32
     severity: Severity
     start_date: date
     is_active: bool = True
@@ -59,11 +60,11 @@ class Injury(InjuryInput):
 
 
 class AllergyList(BaseModel):
-    allergen_ids: list[int]
+    allergen_ids: list[Id32]
 
 
 class ExcludedFoodList(BaseModel):
-    food_item_ids: list[int]
+    food_item_ids: list[Id32]
 
 
 __all__ = ["Allergen", "AllergyList", "ExcludedFoodList", "FoodSummary", "Injury", "InjuryInput", "InjuryUpdate",

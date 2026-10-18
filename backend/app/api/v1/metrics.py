@@ -4,11 +4,12 @@ from __future__ import annotations
 from datetime import date
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Path, Query, Response
+from fastapi import APIRouter, Depends, Query, Response
 
 from app.api.deps import ClockDep, CurrentUser, UowDep
 from app.schemas import metrics as s
 from app.schemas.common import Error
+from app.schemas.ids import PathId64
 from app.services.metrics import BodyMetricsService
 
 router = APIRouter(prefix="/body-metrics", tags=["workouts"])
@@ -43,6 +44,6 @@ async def list_body_metrics(user: CurrentUser, service: Service,
 
 @router.delete("/{id}", operation_id="deleteBodyMetrics", summary="Delete a measurement", status_code=204,
                response_class=Response, responses={**_401, **_404, **_422})
-async def delete(id: Annotated[int, Path(ge=1)], user: CurrentUser, service: Service) -> Response:  # noqa: A002
+async def delete(id: PathId64, user: CurrentUser, service: Service) -> Response:  # noqa: A002
     await service.delete(user, id)
     return Response(status_code=204)

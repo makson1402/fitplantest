@@ -459,6 +459,7 @@ paths:
       responses:
         '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/SessionExercise'}}}}
         '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
         '422': {$ref: '#/components/responses/ValidationError'}
   /session-exercises/{id}/swap:
     parameters: [{$ref: '#/components/parameters/Id'}]
@@ -472,6 +473,7 @@ paths:
       responses:
         '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/SessionExercise'}}}}
         '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
         '422': {$ref: '#/components/responses/ValidationError'}
 
   # ------------------------------------------------------------------ diet plans
@@ -598,6 +600,7 @@ paths:
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/WorkoutInput'}}}}
       responses:
         '201': {description: Saved, content: {application/json: {schema: {$ref: '#/components/schemas/WorkoutResult'}}}}
+        '409': {$ref: '#/components/responses/Conflict'}
         '422': {$ref: '#/components/responses/ValidationError'}
     get:
       tags: [workouts]
@@ -656,6 +659,7 @@ paths:
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/BodyMetricsInput'}}}}
       responses:
         '200': {description: Saved, content: {application/json: {schema: {$ref: '#/components/schemas/BodyMetrics'}}}}
+        '409': {$ref: '#/components/responses/Conflict'}
         '422': {$ref: '#/components/responses/ValidationError'}
     get:
       tags: [workouts]
@@ -777,6 +781,7 @@ paths:
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/NutritionLogInput'}}}}
       responses:
         '201': {description: Saved, content: {application/json: {schema: {$ref: '#/components/schemas/NutritionLog'}}}}
+        '409': {$ref: '#/components/responses/Conflict'}
         '422': {$ref: '#/components/responses/ValidationError'}
     get:
       tags: [nutrition]
@@ -962,7 +967,7 @@ components:
   responses:
     Unauthorized: {description: Missing, invalid or expired credentials, content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
     NotFound: {description: Not found (also used for rows of other users), content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
-    Conflict: {description: Conflict (for example email already used, plan state), content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+    Conflict: {description: 'Conflict (for example email already used, plan state, an archived plan that cannot be changed, a client_uuid that belongs to a deleted record)', content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
     ValidationError: {description: Invalid input or a business rule failed, content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
     TooManyRequests: {description: Rate limit exceeded, content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
 

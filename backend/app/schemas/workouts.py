@@ -7,17 +7,18 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
+from app.schemas.ids import Id32, Id64
 from app.schemas.training import TrainingSession
 
 AdjustmentReason = Literal["baseline", "reduce_high_rpe", "reduce_incomplete_set", "progression"]
 
 
 class WorkoutSetInput(BaseModel):
-    exercise_id: int
-    session_exercise_id: int | None = None
+    exercise_id: Id32
+    session_exercise_id: Id64 | None = None
     set_number: int = Field(ge=1)
     reps: int = Field(ge=0, le=200)
-    weight_kg: float = Field(default=0, ge=0, le=9999.99, allow_inf_nan=False)
+    weight_kg: float = Field(default=0, ge=0, allow_inf_nan=False)  # the 9999.99 column limit: services/workouts.py
     rpe: int | None = Field(default=None, ge=1, le=10)
     completed: bool = Field(default=True, description="False when the set could not be completed (a reduce signal)")
 
@@ -25,7 +26,7 @@ class WorkoutSetInput(BaseModel):
 class WorkoutInput(BaseModel):
     # Optional; the defaults are never validated: an absent field is None, an explicit `null` is a 422.
     client_uuid: UUID = Field(default=None, description="Set by the app; makes retries and sync idempotent")  # type: ignore[assignment]
-    training_session_id: int | None = None
+    training_session_id: Id64 | None = None
     performed_on: date
     started_at: datetime | None = None
     finished_at: datetime | None = None
