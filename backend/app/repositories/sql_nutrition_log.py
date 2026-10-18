@@ -131,6 +131,12 @@ class SqlNutritionLogRepository:
         return DayTotals(count, kcal, protein, fat, carbs, float(before) if before is not None else None,
                          float(after) if after is not None else None)
 
+    async def logged_planned_meal_ids(self, user_id: int, day: date) -> set[int]:
+        rows = await self.session.scalars(select(NutritionLog.planned_meal_id).where(
+            NutritionLog.user_id == user_id, NutritionLog.log_date == day, NutritionLog.deleted_at.is_(None),
+            NutritionLog.planned_meal_id.is_not(None)))
+        return set(rows)
+
     async def active_diet_targets(self, user_id: int) -> DietTargets | None:
         row = await self.session.scalar(select(DietPlan).where(DietPlan.user_id == user_id,
                                                                DietPlan.status == "active")
