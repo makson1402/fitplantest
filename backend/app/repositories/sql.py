@@ -28,6 +28,7 @@ from app.repositories.sql_library import SqlLibraryRepository
 from app.repositories.sql_metrics import SqlBodyMetricsRepository
 from app.repositories.sql_nutrition_log import SqlNutritionLogRepository
 from app.repositories.sql_profile import SqlProfileRepository
+from app.repositories.sql_reports import SqlReportRepository
 from app.repositories.sql_training import SqlTrainingRepository
 from app.repositories.sql_workouts import SqlWorkoutRepository
 
@@ -139,6 +140,7 @@ class SqlUnitOfWork:
         self.metrics = SqlBodyMetricsRepository(session)
         self.nutrition_log = SqlNutritionLogRepository(session)
         self.analytics = SqlAnalyticsRepository(session)
+        self.reports = SqlReportRepository(session)
 
     async def commit(self) -> None:
         await self.session.commit()

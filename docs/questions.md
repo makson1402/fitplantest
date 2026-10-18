@@ -59,3 +59,12 @@ Agents append here when a spec is silent or contradictory. Format: `- [task id] 
 - Decision: an exhausted connection pool answers 503 with `Retry-After`, code `internal_error` (no new code in the contract's list). Proposed default; tell me if a dedicated code is wanted.
 - Decision: the upload limit is 9 MiB (8 MiB photo plus multipart overhead). If D-05 fixes another photo size, change `MAX_UPLOAD_BYTES`.
 - Note: the auth rate limiter is per process (see backend/README.md); a hard limit belongs at the reverse proxy (W phase).
+
+## B-25 (reports and export)
+- Decision: `report_type` is derived from the period (Monday-Sunday = weekly, a whole calendar month = monthly, else custom); the contract's request has no type field.
+- Decision: generating a period again replaces the stored report (same id, new figures and `generated_at`), because `UNIQUE (user_id, report_type, period_start, period_end)`. The contract answers 201 either way.
+- Decision: not enough history (algorithms.md 8) is HTTP 422 with code `insufficient_data` (listed in the contract's code list); the Report schema has no status field. A period ending after today or longer than 366 days is a 422 `validation_error` on `period_end`.
+- Decision: `estimated_goal_completion_date` and `irregular_data` come from the goal prediction as of the day the report is generated (algorithms.md 9 looks at the last 28 days), not as of the report's period end.
+- Decision: `training_sessions_planned` = sessions per week of the active plan x the days of the period the plan covers / 7, rounded (the denominator of the workout compliance).
+- Decision: CSV layout is `section,key,value` (UTF-8 with BOM); the PDF uses the built-in Latin-1 fonts, so characters outside Latin-1 print as `?` (reports are in English). Dependencies added: `fpdf2` (runtime), `pypdf` (tests only).
+- Open for B-26: the weekly job should call `ReportService.create(..., is_auto=True)`; today `create` replaces an existing report, B-26 needs insert-if-absent.
