@@ -56,6 +56,10 @@ class SessionExerciseUpdate(BaseModel):
         return self
 
 
+class SessionUpdate(BaseModel):
+    weekday: Weekday
+
+
 class SwapRequest(BaseModel):
     exercise_id: Id32
 

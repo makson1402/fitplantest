@@ -11,6 +11,7 @@ from app.api.v1 import (
     nutrition_log,
     profile,
     reports,
+    schedule,
     suggestions,
     training,
     users,
@@ -26,11 +27,13 @@ router.include_router(profile.router)
 router.include_router(nutrition.router)
 router.include_router(training.router)
 router.include_router(training.exercises_router)
+router.include_router(training.sessions_router)
 router.include_router(diet.router)
 router.include_router(workouts.router)
 router.include_router(metrics.router)
 router.include_router(nutrition_log.router)
 router.include_router(analytics.router)
 router.include_router(reports.router)
+router.include_router(schedule.router)
 router.include_router(suggestions.router)
 router.include_router(users.router)

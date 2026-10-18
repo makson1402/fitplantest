@@ -57,6 +57,16 @@ async def accept(id: PathId64, user: CurrentUser, service: Service,  # noqa: A00
     return await service.accept(user, id, body)
 
 
+sessions_router = APIRouter(prefix="/training-sessions", tags=["training"])
+
+
+@sessions_router.patch("/{id}", operation_id="updateTrainingSession", summary="Move a session to another weekday",
+                       response_model=s.TrainingSession, responses={**_401, **_404, **_409, **_422})
+async def update_training_session(id: PathId64, body: s.SessionUpdate,  # noqa: A002
+                                  user: CurrentUser, service: Service) -> s.TrainingSession:
+    return await service.move_session(user, id, body.weekday)
+
+
 exercises_router = APIRouter(prefix="/session-exercises", tags=["training"])
 
 

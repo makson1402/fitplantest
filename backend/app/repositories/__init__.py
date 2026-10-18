@@ -19,6 +19,7 @@ from app.repositories.metrics import BodyMetricsRepository
 from app.repositories.nutrition_log import NutritionLogRepository
 from app.repositories.profile import ProfileRepository
 from app.repositories.reports import ReportRepository
+from app.repositories.schedule import ScheduleRepository
 from app.repositories.training import TrainingRepository
 from app.repositories.workouts import WorkoutRepository
 
@@ -96,6 +97,7 @@ class UnitOfWork(Protocol):
     nutrition_log: NutritionLogRepository
     analytics: AnalyticsRepository
     reports: ReportRepository
+    schedule: ScheduleRepository
 
     async def commit(self) -> None: ...
     async def rollback(self) -> None: ...

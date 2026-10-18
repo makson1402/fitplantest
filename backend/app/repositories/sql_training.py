@@ -74,6 +74,17 @@ class SqlTrainingRepository:
         return SessionExerciseContext(record, plan.id, plan.status, plan.experience_level, plan.equipment,
                                       session.id, siblings)
 
+    async def session_plan(self, user_id: int, session_id: int) -> tuple[int, str] | None:
+        row = (await self.session.execute(
+            select(TrainingPlan.id, TrainingPlan.status)
+            .join(TrainingSession, TrainingSession.training_plan_id == TrainingPlan.id)
+            .where(TrainingSession.id == session_id, TrainingPlan.user_id == user_id))).first()
+        return (row[0], row[1]) if row else None
+
+    async def set_session_weekday(self, session_id: int, weekday: str) -> None:
+        await self.session.execute(update(TrainingSession).where(TrainingSession.id == session_id).values(
+            weekday=weekday))
+
     async def update_session_exercise(self, session_exercise_id: int, changes: dict) -> None:
         if changes:
             await self.session.execute(
