@@ -10,8 +10,12 @@ Mobile application for training and nutrition planning (engineering thesis, Lubl
 
 ## Local setup
 
-1. `cp .env.example .env`
-2. `docker compose up -d`
+1. `cp .env.example .env` (set `JWT_SECRET`)
+2. `docker compose up -d --build` starts PostgreSQL, MongoDB, the migrations, the API (<http://localhost:8000/api/v1/docs>) and the scheduler
+3. `docker compose --profile tools run --rm seed` loads the exercises and foods (idempotent)
+
+Capacity and configuration of the backend: [backend/README.md](backend/README.md). For development without the
+backend container run only `docker compose up -d postgres mongo` and start the API with uv.
 
 ## Workflow
 
