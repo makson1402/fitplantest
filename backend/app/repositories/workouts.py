@@ -7,6 +7,7 @@ from decimal import Decimal
 from typing import Protocol
 from uuid import UUID
 
+from app.repositories.sync import SyncPosition
 from app.repositories.training import SessionExerciseRecord
 
 
@@ -78,6 +79,10 @@ class SessionForAdaptation:
 
 
 class WorkoutRepository(Protocol):
+    async def changed_since(self, user_id: int, position: SyncPosition | None, limit: int) -> list[WorkoutRecord]:
+        """Workouts (tombstones included) after `position`, ordered by (updated_at, id); sync pull (B-27)."""
+        ...
+
     async def find_by_client_uuid(self, user_id: int, client_uuid: UUID) -> WorkoutRecord | None:
         """Including a deleted one (a tombstone keeps its client uuid)."""
         ...

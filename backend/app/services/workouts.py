@@ -107,8 +107,9 @@ class WorkoutService:
         return context
 
     # ------------------------------------------------------------------ create
-    async def create(self, user: UserRecord, body: s.WorkoutInput) -> s.WorkoutResult:
-        """Save a finished workout, adapt the plan (section 6) and update personal records (6.5)."""
+    async def create(self, user: UserRecord, body: s.WorkoutInput, *, adapt: bool = True) -> s.WorkoutResult:
+        """Save a finished workout, adapt the plan (section 6) and update personal records (6.5). Synced workouts
+        (B-27) are saved with `adapt=False`: the plan changes only through a workout logged online."""
         await self.uow.training.lock_user(user.id)  # serialise adaptation per user
         if body.client_uuid is not None:
             existing = await self.repo.find_by_client_uuid(user.id, body.client_uuid)
@@ -122,7 +123,7 @@ class WorkoutService:
             "client_uuid": body.client_uuid or uuid4(), "training_session_id": body.training_session_id,
             "performed_on": body.performed_on, "started_at": body.started_at, "finished_at": body.finished_at,
             "overall_rpe": body.overall_rpe, "notes": body.notes}, _set_records(body))
-        if context is not None and context.plan_status in ADAPTED_PLAN_STATUSES:
+        if adapt and context is not None and context.plan_status in ADAPTED_PLAN_STATUSES:
             await self._adapt(context, workout, body.overall_rpe)
         await self._update_records(user, workout)
         await self.uow.commit()

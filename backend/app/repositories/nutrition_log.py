@@ -8,6 +8,7 @@ from typing import Protocol
 from uuid import UUID
 
 from app.repositories.library import FoodRecord
+from app.repositories.sync import SyncPosition
 
 
 @dataclass
@@ -72,6 +73,11 @@ class DietTargets:
 
 
 class NutritionLogRepository(Protocol):
+    async def changed_since(self, user_id: int, position: SyncPosition | None,
+                            limit: int) -> list[NutritionLogRecord]:
+        """Logs (tombstones included) after `position`, ordered by (updated_at, id); sync pull (B-27)."""
+        ...
+
     async def find_by_client_uuid(self, user_id: int, client_uuid: UUID) -> NutritionLogRecord | None:
         """Including a deleted one (a tombstone keeps its client uuid)."""
         ...

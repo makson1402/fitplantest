@@ -13,6 +13,7 @@ from app.api.v1 import (
     reports,
     schedule,
     suggestions,
+    sync,
     training,
     users,
     workouts,
@@ -35,5 +36,6 @@ router.include_router(nutrition_log.router)
 router.include_router(analytics.router)
 router.include_router(reports.router)
 router.include_router(schedule.router)
+router.include_router(sync.router)
 router.include_router(suggestions.router)
 router.include_router(users.router)

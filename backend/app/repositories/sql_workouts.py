@@ -19,6 +19,8 @@ from app.db.models.training import (
     WorkoutSetLog,
 )
 from app.repositories.sql_library import _exercise
+from app.repositories.sync import WORKOUT, SyncPosition
+from app.repositories.sync_sql import after
 from app.repositories.training import SessionExerciseRecord
 from app.repositories.workouts import (
     AdjustmentRecord,
@@ -125,6 +127,15 @@ class SqlWorkoutRepository:
             .limit(limit).offset(offset).execution_options(populate_existing=True)))
         sets = await self._sets([r.id for r in rows])
         return [_workout(r, sets[r.id]) for r in rows], total or 0
+
+    async def changed_since(self, user_id: int, position: SyncPosition | None, limit: int) -> list[WorkoutRecord]:
+        rows = list(await self.session.scalars(
+            select(WorkoutLog).where(WorkoutLog.user_id == user_id,
+                                     after(WorkoutLog.updated_at, WorkoutLog.id, position, WORKOUT))
+            .order_by(WorkoutLog.updated_at, WorkoutLog.id).limit(limit)
+            .execution_options(populate_existing=True)))
+        sets = await self._sets([r.id for r in rows])
+        return [_workout(r, sets[r.id]) for r in rows]
 
     async def replace_workout(self, user_id: int, workout_id: int, values: dict,
                               sets: list[SetRecord]) -> WorkoutRecord | None:

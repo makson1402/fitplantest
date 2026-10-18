@@ -7,6 +7,8 @@ from decimal import Decimal
 from typing import Protocol
 from uuid import UUID
 
+from app.repositories.sync import SyncPosition
+
 
 @dataclass
 class BodyMetricsRecord:
@@ -28,6 +30,11 @@ class BodyMetricsRecord:
 
 
 class BodyMetricsRepository(Protocol):
+    async def changed_since(self, user_id: int, position: SyncPosition | None,
+                            limit: int) -> list[BodyMetricsRecord]:
+        """Measurements (tombstones included) after `position`, ordered by (updated_at, id); sync pull (B-27)."""
+        ...
+
     async def find_by_client_uuid(self, user_id: int, client_uuid: UUID) -> BodyMetricsRecord | None:
         """Including a deleted one (a tombstone keeps its client uuid)."""
         ...

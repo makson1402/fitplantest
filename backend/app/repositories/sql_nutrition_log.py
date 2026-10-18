@@ -18,6 +18,8 @@ from app.repositories.nutrition_log import (
     NutritionLogRecord,
 )
 from app.repositories.sql_library import _food
+from app.repositories.sync import NUTRITION_LOG, SyncPosition
+from app.repositories.sync_sql import after
 
 
 def _log(r: NutritionLog, items: list[LogItemRecord]) -> NutritionLogRecord:
@@ -95,6 +97,16 @@ class SqlNutritionLogRepository:
             .limit(limit).offset(offset).execution_options(populate_existing=True)))
         items = await self._items([r.id for r in rows])
         return [_log(r, items[r.id]) for r in rows], total or 0
+
+    async def changed_since(self, user_id: int, position: SyncPosition | None,
+                            limit: int) -> list[NutritionLogRecord]:
+        rows = list(await self.session.scalars(
+            select(NutritionLog).where(NutritionLog.user_id == user_id,
+                                       after(NutritionLog.updated_at, NutritionLog.id, position, NUTRITION_LOG))
+            .order_by(NutritionLog.updated_at, NutritionLog.id).limit(limit)
+            .execution_options(populate_existing=True)))
+        items = await self._items([r.id for r in rows])
+        return [_log(r, items[r.id]) for r in rows]
 
     async def update_log(self, user_id: int, log_id: int, values: dict,
                          items: list[NewLogItem] | None) -> NutritionLogRecord | None:
