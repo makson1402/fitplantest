@@ -24,6 +24,7 @@ from app.repositories import (
 )
 from app.repositories.sql_analytics import SqlAnalyticsRepository
 from app.repositories.sql_diet import SqlDietRepository
+from app.repositories.sql_jobs import SqlJobRepository
 from app.repositories.sql_library import SqlLibraryRepository
 from app.repositories.sql_metrics import SqlBodyMetricsRepository
 from app.repositories.sql_nutrition_log import SqlNutritionLogRepository
@@ -84,6 +85,11 @@ class SqlUserRepository:
             raise
         return _user(row)
 
+    async def list_active_after(self, user_id: int, limit: int) -> list[UserRecord]:
+        rows = await self.session.scalars(select(User).where(User.id > user_id, User.is_active.is_(True))
+                                          .order_by(User.id).limit(limit).execution_options(populate_existing=True))
+        return [_user(r) for r in rows]
+
     async def set_password_hash(self, user_id: int, password_hash: str) -> None:
         await self.session.execute(update(User).where(User.id == user_id).values(password_hash=password_hash))
 
@@ -143,6 +149,7 @@ class SqlUnitOfWork:
         self.analytics = SqlAnalyticsRepository(session)
         self.reports = SqlReportRepository(session)
         self.schedule = SqlScheduleRepository(session)
+        self.jobs = SqlJobRepository(session)
 
     async def commit(self) -> None:
         await self.session.commit()

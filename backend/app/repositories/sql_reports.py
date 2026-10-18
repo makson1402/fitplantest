@@ -1,6 +1,8 @@
 """SQLAlchemy implementation of `ReportRepository` (B-25)."""
 from __future__ import annotations
 
+from datetime import date
+
 from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -30,6 +32,17 @@ class SqlReportRepository:
             set_={**refreshed, "generated_at": func.now()}).returning(ProgressReport)
         row = await self.session.scalar(stmt, execution_options={"populate_existing": True})
         return _record(row)
+
+    async def insert_if_absent(self, user_id: int, values: dict) -> ReportRecord | None:
+        stmt = insert(ProgressReport).values(user_id=user_id, **values).on_conflict_do_nothing(
+            index_elements=["user_id", "report_type", "period_start", "period_end"]).returning(ProgressReport)
+        row = await self.session.scalar(stmt, execution_options={"populate_existing": True})
+        return _record(row) if row else None
+
+    async def exists(self, user_id: int, report_type: str, start: date, end: date) -> bool:
+        return await self.session.scalar(select(ProgressReport.id).where(
+            ProgressReport.user_id == user_id, ProgressReport.report_type == report_type,
+            ProgressReport.period_start == start, ProgressReport.period_end == end)) is not None
 
     async def get(self, user_id: int, report_id: int) -> ReportRecord | None:
         row = await self.session.scalar(select(ProgressReport).where(

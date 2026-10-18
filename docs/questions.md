@@ -82,3 +82,10 @@ Agents append here when a spec is silent or contradictory. Format: `- [task id] 
 - Decision: a push token is unique per device: registering a known token again refreshes it, and a token registered by another user moves to the new user (a different person signed in on the same phone). Only Expo token formats are accepted; at most 10 devices per user (the least recently seen are dropped).
 - Decision: `PATCH /training-sessions/{id}` moves a session of a draft or active plan; a weekday already used by another session of the plan is a 409 (the contract's 409), an archived plan is a 409, other users' sessions are 404.
 - Note for B-26: notifications are only read here; the weekly job inserts them (`notification` rows) and sends the push.
+
+## B-26 (scheduler and push)
+- Decision: instead of one cron trigger at exactly Monday 07:00 per time zone, one scheduler process runs idempotent jobs every 15 minutes. A user's report for the previous Monday-Sunday is created by the first pass after their local Monday 07:00 (so a job that was down catches up). `UNIQUE (user_id, report_type, period_start, period_end)` plus insert-if-absent make repeated and concurrent runs a no-op, as the task requires.
+- Decision: the notification row is the push queue (`sent_at IS NULL`). A crash between creating and pushing loses nothing; an unreachable Expo service is retried for 24 h; users without registered devices simply get the inbox entry. `PUSH_ENABLED=false` turns delivery off.
+- Decision: the weekly report is also created for a week without any records, as long as the user has 7 days of history overall (algorithms.md 12 says "if the minimum-data rule holds"); its metrics are then null.
+- Decision: expired-photo cleanup never deletes without MongoDB configured (it cannot know which photos are still referenced). `PHOTO_DIR` is written by B-19; until then the job finds nothing.
+- Note: the achievement and motivational notification types have no producer yet; the dispatch job already delivers any notification row.
