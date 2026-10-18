@@ -48,7 +48,7 @@ class AnalyticsService:
     async def _enough_data(self, user: UserRecord) -> bool:
         return has_enough_data(await self.repo.record_days(user.id, MIN_DATA_DAYS))
 
-    async def _training_compliance(self, user: UserRecord, date_from: date, date_to: date,
+    async def training_compliance(self, user: UserRecord, date_from: date, date_to: date,
                                    workout_days: list[date]) -> float | None:
         """Section 7: workouts done in the part of the range that the active plan covers, over the planned sessions
         (sessions per week x days / 7). None without an active plan or when the plan does not overlap the range."""
@@ -62,7 +62,7 @@ class AnalyticsService:
         done = sum(1 for d in workout_days if start <= d <= end)
         return workout_compliance(done, len(plan.sessions), (end - start).days + 1)
 
-    async def _diet_compliance(self, user: UserRecord, date_from: date, date_to: date,
+    async def diet_compliance_pct(self, user: UserRecord, date_from: date, date_to: date,
                                calories: dict[date, float]) -> float | None:
         """Section 7: share of days (from the start of the active diet plan) within 10 % of the calorie target."""
         plan = await self.uow.diet.get_plan_by_status(user.id, "active")
@@ -94,12 +94,12 @@ class AnalyticsService:
             avg_workouts_per_week=_round(total / (PERIOD_DAYS[period] / 7)) if total else None,
             avg_calories=_round(sum(calories.values()) / len(calories), 1) if calories else None,
             tonnage_kg=_round(tonnage) if sets else None,
-            workout_compliance_pct=await self._training_compliance(user, date_from, date_to, workout_days),
-            diet_compliance_pct=await self._diet_compliance(user, date_from, date_to, calories),
-            key_lifts=self._key_lifts(sets))
+            workout_compliance_pct=await self.training_compliance(user, date_from, date_to, workout_days),
+            diet_compliance_pct=await self.diet_compliance_pct(user, date_from, date_to, calories),
+            key_lifts=self.key_lifts(sets))
 
     @staticmethod
-    def _key_lifts(sets: list[LoggedSet]) -> list[s.KeyLift]:
+    def key_lifts(sets: list[LoggedSet]) -> list[s.KeyLift]:
         """The three most-trained exercises (most workouts, then most sets): e1RM of the first and the best set."""
         by_exercise: dict[int, list[LoggedSet]] = defaultdict(list)
         for x in _counted(sets):
@@ -137,13 +137,13 @@ class AnalyticsService:
         elif metric == "workout_compliance":
             days = await self.repo.workout_dates(user.id, date_from, date_to)
             for start, end in weeks(date_from, date_to):
-                value = await self._training_compliance(user, start, end, days)
+                value = await self.training_compliance(user, start, end, days)
                 if value is not None:
                     points.append((start, value))
         elif metric == "diet_compliance":
             calories = await self.repo.daily_calories(user.id, date_from, date_to)
             for start, end in weeks(date_from, date_to):
-                value = await self._diet_compliance(user, start, end, calories)
+                value = await self.diet_compliance_pct(user, start, end, calories)
                 if value is not None:
                     points.append((start, value))
         return s.ChartSeries(status="ok", points=[s.ChartPoint(date=d, value=v) for d, v in points], **series)
@@ -156,7 +156,7 @@ class AnalyticsService:
         target = float(profile.target_weight_kg) if profile and profile.target_weight_kg is not None else None
         window_from = today - timedelta(days=PREDICTION_WINDOW_DAYS - 1)
         weighins = await self.repo.weighins(user.id, today - timedelta(days=PREDICTION_WINDOW_DAYS), today)
-        compliance = await self._training_compliance(
+        compliance = await self.training_compliance(
             user, window_from, today, await self.repo.workout_dates(user.id, window_from, today))
         result = predict_goal(weighins, target, today, compliance)
         return s.GoalPrediction(
