@@ -45,6 +45,12 @@ class Settings(BaseSettings):
     auth_rate_limit: int = 10
     auth_rate_window_seconds: int = 60
 
+    # Scheduler and push (B-26). One scheduler process runs `python -m app.jobs loop` (see backend/README.md).
+    push_enabled: bool = True
+    expo_push_url: str = "https://exp.host/--/api/v2/push/send"
+    expo_access_token: str | None = None
+    scheduler_interval_seconds: int = Field(default=900, ge=1)  # how often the jobs run (they are idempotent)
+
     # Hardening and capacity (B-29). See backend/README.md for how the numbers add up.
     # Connection pool of ONE worker process: at most db_pool_size + db_max_overflow connections to PostgreSQL.
     db_pool_size: int = Field(default=10, ge=1)

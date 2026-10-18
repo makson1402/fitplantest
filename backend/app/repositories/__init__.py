@@ -14,6 +14,7 @@ from uuid import UUID
 
 from app.repositories.analytics import AnalyticsRepository
 from app.repositories.diet import DietRepository
+from app.repositories.jobs import JobRepository
 from app.repositories.library import LibraryRepository
 from app.repositories.metrics import BodyMetricsRepository
 from app.repositories.nutrition_log import NutritionLogRepository
@@ -67,6 +68,10 @@ class UserRepository(Protocol):
 
     async def set_password_hash(self, user_id: int, password_hash: str) -> None: ...
 
+    async def list_active_after(self, user_id: int, limit: int) -> list[UserRecord]:
+        """Active accounts with an id above `user_id`, ascending (keyset paging for the scheduled jobs)."""
+        ...
+
     async def delete(self, user_id: int) -> None:
         """Delete the user; every table that references it cascades (FR-U5)."""
         ...
@@ -98,6 +103,7 @@ class UnitOfWork(Protocol):
     analytics: AnalyticsRepository
     reports: ReportRepository
     schedule: ScheduleRepository
+    jobs: JobRepository
 
     async def commit(self) -> None: ...
     async def rollback(self) -> None: ...

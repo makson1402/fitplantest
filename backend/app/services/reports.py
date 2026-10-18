@@ -55,6 +55,22 @@ class ReportService:
         await self.uow.commit()
         return to_schema(record)
 
+    async def create_auto(self, user: UserRecord, start: date, end: date) -> ReportRecord | None:
+        """The scheduled report of FR-R7 (algorithms.md 12). Inserts only when the period has no report yet and
+        returns the new one, otherwise None: a second run of the job changes nothing. Not enough history (section 8)
+        also gives None. The caller commits, so it can add the notification in the same transaction."""
+        await self.uow.training.lock_user(user.id)
+        if await self.uow.reports.exists(user.id, classify_period(start, end), start, end):
+            return None  # cheaper than computing the figures; the insert below still guards against a race
+        try:
+            values = await self._figures(user, start, end)
+        except AppError as exc:
+            if exc.code == "insufficient_data":
+                return None
+            raise
+        values["is_auto"] = True
+        return await self.uow.reports.insert_if_absent(user.id, values)
+
     async def list(self, user: UserRecord, report_type: str | None, limit: int, offset: int) -> s.ReportPage:
         records, total = await self.uow.reports.list(user.id, report_type, limit, offset)
         return s.ReportPage(items=[to_schema(r) for r in records], total=total, limit=limit, offset=offset)

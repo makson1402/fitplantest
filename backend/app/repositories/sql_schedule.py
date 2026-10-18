@@ -64,6 +64,37 @@ class SqlScheduleRepository:
             .execution_options(populate_existing=True))
         return [_notification(n) for n in rows], int(total or 0)
 
+    async def create_notification(self, user_id: int, type_: str, title: str, message: str, data: dict,
+                                  at: datetime) -> NotificationRecord:
+        row = await self.session.scalar(
+            insert(Notification).values(user_id=user_id, type=type_, title=title, message=message, data=data,
+                                        created_at=at).returning(Notification),
+            execution_options={"populate_existing": True})
+        return _notification(row)
+
+    async def unsent_notification_ids(self, limit: int) -> list[int]:
+        rows = await self.session.scalars(select(Notification.id).where(Notification.sent_at.is_(None))
+                                          .order_by(Notification.id).limit(limit))
+        return list(rows)
+
+    async def claim_unsent_notification(self, notification_id: int) -> tuple[NotificationRecord, int] | None:
+        row = await self.session.scalar(
+            select(Notification).where(Notification.id == notification_id, Notification.sent_at.is_(None))
+            .with_for_update(skip_locked=True).execution_options(populate_existing=True))
+        return (_notification(row), row.user_id) if row else None
+
+    async def mark_notification_sent(self, notification_id: int, at: datetime) -> None:
+        await self.session.execute(update(Notification).where(Notification.id == notification_id).values(sent_at=at))
+
+    async def push_tokens(self, user_id: int) -> list[PushTokenRecord]:
+        rows = await self.session.scalars(select(DevicePushToken).where(DevicePushToken.user_id == user_id)
+                                          .order_by(DevicePushToken.id).execution_options(populate_existing=True))
+        return [PushTokenRecord(r.id, r.token, r.platform) for r in rows]
+
+    async def delete_push_tokens_by_value(self, tokens: list[str]) -> None:
+        if tokens:
+            await self.session.execute(delete(DevicePushToken).where(DevicePushToken.token.in_(tokens)))
+
     async def mark_notification_read(self, user_id: int, notification_id: int, at: datetime) -> bool:
         found = await self.session.scalar(select(Notification.id).where(
             Notification.id == notification_id, Notification.user_id == user_id))

@@ -45,3 +45,28 @@ With PostgreSQL's default `max_connections = 100`, 4 workers x 20 = 80 fits. Rec
   (2500 requests) through a pool of 5 + 5 connections and requires zero 5xx and never more than 10 connections.
 - To check a real deployment, watch `pg_stat_activity` (connections should stay below the sum above) and the
   `database connection pool exhausted` log line (it should never appear).
+
+## Scheduler and push (B-26)
+
+Scheduled work is not part of the web workers. Run **one** extra process next to the API:
+
+    python -m app.jobs loop      # every SCHEDULER_INTERVAL_SECONDS (default 900 = 15 min); `once` runs a single pass
+
+Each pass runs three idempotent jobs, each isolated from the others' failures:
+
+1. **Weekly reports** (algorithms.md 12): for every active user whose local time is past Monday 07:00, create the
+   report for the previous Monday-Sunday if the user has 7 days of history, plus a `progress_update` notification, in
+   one transaction. A period that already has a report (made by hand or by an earlier pass) is skipped, so running
+   it twice, concurrently, or after downtime (it catches up) never duplicates.
+2. **Photo cleanup**: deletes files under `PHOTO_DIR/meals/` older than 6 h that no live MongoDB document and no
+   `recognition_ai.image_url` refers to. Without MongoDB it deletes nothing.
+3. **Push delivery**: every notification without `sent_at` is pushed through Expo to the user's devices and marked
+   sent. Tokens that Expo reports as `DeviceNotRegistered` are deleted. When Expo cannot be reached the row stays
+   queued and the next pass retries; after 24 h it is dropped from the queue (it remains in the inbox).
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `PUSH_ENABLED` | true | `false` skips push delivery (notifications still appear in the inbox) |
+| `EXPO_PUSH_URL` | https://exp.host/--/api/v2/push/send | Expo push endpoint |
+| `EXPO_ACCESS_TOKEN` | empty | Only if the Expo project enforces push security |
+| `SCHEDULER_INTERVAL_SECONDS` | 900 | Pause between passes of `loop` |
