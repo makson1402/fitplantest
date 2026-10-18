@@ -6,6 +6,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from app.schemas.ids import Id32
 from app.schemas.library import Equipment, ExerciseSummary, ExperienceLevel, MuscleGroupRef
 from app.schemas.profile import Goal
 
@@ -45,7 +46,7 @@ class SessionExerciseUpdate(BaseModel):
 
     planned_sets: int = Field(default=None, ge=1, le=10)  # type: ignore[assignment]
     planned_reps: int = Field(default=None, ge=1, le=50)  # type: ignore[assignment]
-    planned_weight_kg: float | None = Field(default=None, ge=0, le=9999.99, allow_inf_nan=False)
+    planned_weight_kg: float | None = Field(default=None, ge=0, allow_inf_nan=False)  # 9999.99: services/training.py
     rest_seconds: int = Field(default=None, ge=0, le=600)  # type: ignore[assignment]
 
     @model_validator(mode="after")
@@ -56,7 +57,7 @@ class SessionExerciseUpdate(BaseModel):
 
 
 class SwapRequest(BaseModel):
-    exercise_id: int
+    exercise_id: Id32
 
 
 class TrainingSession(BaseModel):

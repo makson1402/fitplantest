@@ -22,6 +22,8 @@ from app.services.training import serialize_session, today_for
 WEEKDAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")  # date.weekday(): Monday is 0
 ADAPTED_PLAN_STATUSES = ("draft", "active")  # an archived plan is history: its values are not adapted
 _TWO = Decimal("0.01")
+MAX_WEIGHT_KG = 9999.99  # numeric(6,2)
+MAX_SET_NUMBER = 32767  # smallint
 
 
 def _dec(value: float) -> Decimal:
@@ -82,6 +84,10 @@ class WorkoutService:
                 problems.append(_problem(f"sets.{i}.set_number", "duplicate",
                                          "This set number is used twice for the exercise"))
             seen.add((x.exercise_id, x.set_number))
+        problems += [_problem(f"sets.{i}.set_number", "out_of_range", "At most 32767")
+                     for i, x in enumerate(body.sets) if x.set_number > MAX_SET_NUMBER]
+        problems += [_problem(f"sets.{i}.weight_kg", "out_of_range", "At most 9999.99 kg")
+                     for i, x in enumerate(body.sets) if x.weight_kg > MAX_WEIGHT_KG]
         known = await self.repo.existing_exercise_ids(sorted({x.exercise_id for x in body.sets}))
         problems += [_problem(f"sets.{i}.exercise_id", "not_found", "Unknown exercise")
                      for i, x in enumerate(body.sets) if x.exercise_id not in known]

@@ -45,6 +45,8 @@ class BodyMetricsService:
             value = getattr(body, name)
             if value is not None and value > _MAX_CIRCUMFERENCE:
                 problems.append({"field": name, "code": "out_of_range", "message": "Must be below 1000 cm"})
+            elif value is not None and _dec(value) <= 0:  # stored with 2 decimals: 0.001 would become 0.00
+                problems.append({"field": name, "code": "out_of_range", "message": "At least 0.01 cm"})
         if problems:
             raise AppError(422, "validation_error", "Invalid input", problems)
         return {"measured_on": body.measured_on, "weight_kg": _dec(body.weight_kg),

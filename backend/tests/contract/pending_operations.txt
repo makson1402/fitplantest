@@ -1,0 +1,29 @@
+# Operations of docs/api/openapi.yaml that the backend does not implement yet (task B-28).
+# One operationId per line. tests/contract/test_openapi_conformance.py requires this list to be EXACTLY the set of
+# contract operations that are missing in the code: delete a line when you implement the operation (the test fails
+# otherwise), and never add one for an operation that already exists.
+addRecognitionItem
+confirmRecognition
+createRecognition
+createReport
+deletePushToken
+deleteRecognitionItem
+discardRecognition
+exportReport
+forgotPassword
+getMealSuggestions
+getRecognition
+getReport
+listNotifications
+listReminders
+listReports
+markNotificationRead
+putReminders
+registerPushToken
+resetPassword
+signInWithApple
+signInWithGoogle
+syncPull
+syncPush
+updateRecognitionItem
+updateTrainingSession

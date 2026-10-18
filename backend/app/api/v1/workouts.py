@@ -4,17 +4,19 @@ from __future__ import annotations
 from datetime import date
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Path, Query, Response
+from fastapi import APIRouter, Depends, Query, Response
 
 from app.api.deps import ClockDep, CurrentUser, UowDep
 from app.schemas import workouts as s
 from app.schemas.common import Error
+from app.schemas.ids import OffsetQuery, PathId64
 from app.services.workouts import WorkoutService
 
 router = APIRouter(tags=["workouts"])
 
 _401 = {401: {"model": Error, "description": "Missing, invalid or expired credentials"}}
 _404 = {404: {"model": Error, "description": "Not found (also used for rows of other users)"}}
+_409 = {409: {"model": Error, "description": "Conflict (the client_uuid belongs to a deleted workout)"}}
 _422 = {422: {"model": Error, "description": "Invalid input or a business rule failed"}}
 
 
@@ -23,7 +25,7 @@ def get_workout_service(uow: UowDep, clock: ClockDep) -> WorkoutService:
 
 
 Service = Annotated[WorkoutService, Depends(get_workout_service)]
-WorkoutId = Annotated[int, Path(ge=1)]
+WorkoutId = PathId64
 
 
 @router.get("/sessions/next", operation_id="getNextSession",
@@ -37,7 +39,7 @@ async def get_next_session(user: CurrentUser, service: Service) -> s.NextSession
              description="Stores the workout with its sets, updates personal records and applies algorithms.md "
                          "section 6. The answer lists the plan adjustments made (empty when there was no explicit "
                          "signal) so the app can tell the user.",
-             status_code=201, response_model=s.WorkoutResult, responses={**_401, **_422})
+             status_code=201, response_model=s.WorkoutResult, responses={**_401, **_409, **_422})
 async def create_workout(body: s.WorkoutInput, user: CurrentUser, service: Service) -> s.WorkoutResult:
     return await service.create(user, body)
 
@@ -50,7 +52,7 @@ async def list_workouts(
     date_from: Annotated[date | None, Query(alias="from")] = None,
     date_to: Annotated[date | None, Query(alias="to")] = None,
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
-    offset: Annotated[int, Query(ge=0)] = 0,
+    offset: OffsetQuery = 0,
 ) -> s.WorkoutPage:
     return await service.list(user, date_from, date_to, limit, offset)
 

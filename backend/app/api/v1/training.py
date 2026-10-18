@@ -3,11 +3,12 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Body, Depends, Path
+from fastapi import APIRouter, Body, Depends
 
 from app.api.deps import ClockDep, CurrentUser, UowDep
 from app.schemas import training as s
 from app.schemas.common import Error
+from app.schemas.ids import PathId64
 from app.services.training import TrainingPlanService
 
 router = APIRouter(prefix="/training-plans", tags=["training"])
@@ -51,7 +52,7 @@ async def get_draft(user: CurrentUser, service: Service) -> s.TrainingPlan:
 @router.post("/{id}/accept", operation_id="acceptTrainingPlan",
              summary="Accept the draft (it becomes active, the previous active plan is archived)",
              response_model=s.TrainingPlan, responses={**_401, **_404, **_409, **_422})
-async def accept(id: Annotated[int, Path(ge=1)], user: CurrentUser, service: Service,  # noqa: A002
+async def accept(id: PathId64, user: CurrentUser, service: Service,  # noqa: A002
                  body: Annotated[s.AcceptPlanRequest, Body()] = None) -> s.TrainingPlan:  # type: ignore[assignment]
     return await service.accept(user, id, body)
 
@@ -62,7 +63,7 @@ exercises_router = APIRouter(prefix="/session-exercises", tags=["training"])
 @exercises_router.patch("/{id}", operation_id="updateSessionExercise",
                         summary="Edit sets, reps, weight or rest of a planned exercise",
                         response_model=s.SessionExercise, responses={**_401, **_404, **_409, **_422})
-async def update_session_exercise(id: Annotated[int, Path(ge=1)], body: s.SessionExerciseUpdate,  # noqa: A002
+async def update_session_exercise(id: PathId64, body: s.SessionExerciseUpdate,  # noqa: A002
                                   user: CurrentUser, service: Service) -> s.SessionExercise:
     return await service.update_exercise(user, id, body)
 
@@ -72,6 +73,6 @@ async def update_session_exercise(id: Annotated[int, Path(ge=1)], body: s.Sessio
                       description="Rejects with 422 `invalid_swap` when the exercise is ineligible or from another "
                                   "muscle group.",
                       response_model=s.SessionExercise, responses={**_401, **_404, **_409, **_422})
-async def swap_session_exercise(id: Annotated[int, Path(ge=1)], body: s.SwapRequest,  # noqa: A002
+async def swap_session_exercise(id: PathId64, body: s.SwapRequest,  # noqa: A002
                                 user: CurrentUser, service: Service) -> s.SessionExercise:
     return await service.swap_exercise(user, id, body)

@@ -7,6 +7,7 @@ from typing import Any
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from sqlalchemy.exc import DataError, DBAPIError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 log = logging.getLogger(__name__)
@@ -67,6 +68,11 @@ _HTTP_CODES = {401: "unauthorized", 403: "forbidden", 404: "not_found", 405: "no
                413: "payload_too_large", 415: "unsupported_media_type", 429: "rate_limited"}
 
 
+async def _unhandled(request: Request, exc: Exception) -> JSONResponse:
+    log.error("unhandled error on %s %s", request.method, request.url.path, exc_info=exc)
+    return JSONResponse(error_body("internal_error", "Internal server error"), status_code=500)
+
+
 def install_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(AppError)
     async def _app_error(_: Request, exc: AppError) -> JSONResponse:
@@ -82,7 +88,17 @@ def install_error_handlers(app: FastAPI) -> None:
         return JSONResponse(error_body(code, str(exc.detail)), status_code=exc.status_code,
                             headers=getattr(exc, "headers", None))
 
-    @app.exception_handler(Exception)
-    async def _unhandled(request: Request, exc: Exception) -> JSONResponse:
-        log.error("unhandled error on %s %s", request.method, request.url.path, exc_info=exc)
-        return JSONResponse(error_body("internal_error", "Internal server error"), status_code=500)
+    @app.exception_handler(DBAPIError)
+    async def _database_error(request: Request, exc: DBAPIError) -> JSONResponse:
+        """PostgreSQL refused a value (out of range for the column, a NUL character in text, ...): that is the client's
+        input, not a server fault, so answer 422 like a validation error. SQLSTATE class 22 is "data exception". The
+        known cases are checked earlier with field paths (app/schemas/ids.py, the services); this is the safety net.
+        Any other database error is a real fault and stays a 500."""
+        sqlstate = str(getattr(exc.orig, "sqlstate", None) or getattr(exc.orig, "pgcode", None) or "")
+        if not (isinstance(exc, DataError) or sqlstate.startswith("22")):
+            return await _unhandled(request, exc)
+        log.warning("database rejected a value on %s %s: %s", request.method, request.url.path, type(exc.orig).__name__)
+        return JSONResponse(error_body("validation_error", "Invalid input", [
+            {"code": "invalid_value", "message": "A value is outside what can be stored"}]), status_code=422)
+
+    app.add_exception_handler(Exception, _unhandled)
