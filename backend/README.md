@@ -70,3 +70,12 @@ Each pass runs three idempotent jobs, each isolated from the others' failures:
 | `EXPO_PUSH_URL` | https://exp.host/--/api/v2/push/send | Expo push endpoint |
 | `EXPO_ACCESS_TOKEN` | empty | Only if the Expo project enforces push security |
 | `SCHEDULER_INTERVAL_SECONDS` | 900 | Pause between passes of `loop` |
+
+## Container (B-01)
+
+`backend/Dockerfile` builds one image (build context = repository root) that `docker-compose.yml` uses for four roles:
+`migrate` (runs `alembic upgrade head` once and exits), `backend` (uvicorn, `WEB_WORKERS` workers, default 4,
+published on `API_PORT`, default 8000), `scheduler` (`python -m app.jobs loop`, exactly one) and `seed`
+(`docker compose --profile tools run --rm seed`). The image runs as an unprivileged user, holds no `.env` (settings
+come from the compose environment) and keeps meal photos in the `photos` volume (`PHOTO_DIR=/data/photos`). CI builds
+the stack, loads the seed data and calls the API (job "Docker stack starts and answers").

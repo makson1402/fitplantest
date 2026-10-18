@@ -34,6 +34,67 @@ services:
       timeout: 5s
       retries: 10
 
+  # --- application (B-01). One image, four roles; build context = repository root.
+  migrate:
+    build: &backend-build
+      context: .
+      dockerfile: backend/Dockerfile
+    image: fitplan-backend
+    command: ["alembic", "upgrade", "head"]
+    environment: &backend-env
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"          # the port inside the compose network, not the published one
+      MONGO_HOST: mongo
+      MONGO_PORT: "27017"
+      PHOTO_DIR: /data/photos
+    env_file: .env
+    depends_on:
+      postgres: {condition: service_healthy}
+    restart: "no"
+
+  backend:
+    build: *backend-build
+    image: fitplan-backend
+    restart: unless-stopped
+    env_file: .env
+    environment: *backend-env
+    ports:
+      - "${API_PORT:-8000}:8000"
+    volumes:
+      - photos:/data/photos
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+      mongo: {condition: service_healthy}
+
+  # Weekly reports, push delivery, photo cleanup (B-26). Run exactly one.
+  scheduler:
+    build: *backend-build
+    image: fitplan-backend
+    restart: unless-stopped
+    command: ["python", "-m", "app.jobs", "loop"]
+    healthcheck:
+      disable: true               # the image's HTTP healthcheck belongs to the API
+    env_file: .env
+    environment: *backend-env
+    volumes:
+      - photos:/data/photos
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+      mongo: {condition: service_healthy}
+
+  # Reference data (DB-03): `docker compose --profile tools run --rm seed`. Idempotent.
+  seed:
+    build: *backend-build
+    image: fitplan-backend
+    profiles: ["tools"]
+    command: ["python", "/app/database/seed/load.py"]
+    env_file: .env
+    environment: *backend-env
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+    restart: "no"
+
 volumes:
   postgres_data:
   mongo_data:
+  photos:

@@ -1,0 +1,16 @@
+# Only backend/ and database/seed/ go into the image (see backend/Dockerfile); never secrets or caches.
+.git
+.github
+.env
+.env.*
+!.env.example
+.vscode
+docs
+mobile
+scripts
+**/__pycache__
+**/*.pyc
+**/.venv
+**/.pytest_cache
+**/.ruff_cache
+backend/tests
