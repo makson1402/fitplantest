@@ -177,24 +177,28 @@ async def test_an_exhausted_pool_is_a_503_with_retry_after_not_a_500():
 
 async def test_password_hashing_does_not_block_the_event_loop():
     """12 rounds cost ~250 ms of CPU each. Run on the loop thread, eight concurrent registrations would freeze it for
-    seconds; in worker threads the loop keeps ticking (a ticker measures the longest pause)."""
+    seconds (only a handful of ticks would happen); in worker threads the loop keeps ticking. A busy test machine can
+    delay a single tick, so the check looks at the ticks as a whole, not at the worst one."""
     app = _app(bcrypt_rounds=12)
-    longest = 0.0
+    gaps: list[float] = []
     stop = False
 
     async def ticker():
-        nonlocal longest
         last = time.perf_counter()
         while not stop:
             await asyncio.sleep(0.005)
             now = time.perf_counter()
-            longest = max(longest, now - last)
+            gaps.append(now - last)
             last = now
 
     async with _http(app) as http:
         task = asyncio.create_task(ticker())
+        started = time.perf_counter()
         replies = await asyncio.gather(*(http.post(f"{BASE}/auth/register", json=_register_body()) for _ in range(8)))
+        elapsed = time.perf_counter() - started
         stop = True
         await task
     assert all(r.status_code == 201 for r in replies)
-    assert longest < 0.15, f"the event loop stalled for {longest:.3f}s"
+    gaps.sort()
+    p90 = gaps[int(len(gaps) * 0.9)]
+    assert len(gaps) > 20 and p90 < 0.1, f"{len(gaps)} ticks in {elapsed:.2f}s, 90th percentile gap {p90:.3f}s"

@@ -74,3 +74,11 @@ Agents append here when a spec is silent or contradictory. Format: `- [task id] 
 - Decision: a planned meal counts as eaten when a live nutrition log of that day has `planned_meal_id` set to it; it is then not suggested again.
 - Decision: planned meals whose foods are no longer allowed for the user (an allergy or exclusion added after the plan was made, or an inactive food) are not offered, so the "never an allergen" guarantee holds for old plans too.
 - Decision: `remaining` in the answer is never negative (a day over the target shows 0); the ranking itself uses the raw difference.
+
+## B-14 (schedule and reminders)
+- Unclear: "recompute proposed reminders when a plan is accepted". The contract has no field or endpoint for proposals, and creating reminders behind the user's back would be invented behaviour. Proposed default: the server does nothing on accept; the app proposes reminders from the weekdays of the accepted plan's sessions and saves them with `PUT /reminders`. Tell me if the server should create default reminders on accept instead.
+- Decision: `time_of_day` is the user's wall-clock time, stored as given and never converted, so changing the account time zone does not move a reminder (the device schedules local notifications). A UTC offset in the value is a 422.
+- Decision: `PUT /reminders` replaces everything in one transaction; at most 50 reminders; ids are new on every replace.
+- Decision: a push token is unique per device: registering a known token again refreshes it, and a token registered by another user moves to the new user (a different person signed in on the same phone). Only Expo token formats are accepted; at most 10 devices per user (the least recently seen are dropped).
+- Decision: `PATCH /training-sessions/{id}` moves a session of a draft or active plan; a weekday already used by another session of the plan is a 409 (the contract's 409), an archived plan is a 409, other users' sessions are 404.
+- Note for B-26: notifications are only read here; the weekly job inserts them (`notification` rows) and sends the push.

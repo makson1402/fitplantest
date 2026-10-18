@@ -131,6 +131,26 @@ class TrainingPlanService:
         await self.uow.commit()
         return serialize(await self.uow.training.get_plan(user.id, plan_id))  # type: ignore[arg-type]
 
+    # ------------------------------------------------------------------ schedule (FR-P9)
+    async def move_session(self, user: UserRecord, session_id: int, weekday: str) -> s.TrainingSession:
+        """Move a session of the draft or active plan to another weekday. A weekday holds one session of a plan
+        (UNIQUE in the schema): a taken weekday is a 409, the user moves the other session first."""
+        await self.uow.training.lock_user(user.id)
+        found = await self.uow.training.session_plan(user.id, session_id)
+        if found is None:
+            raise not_found("Session not found")
+        plan_id, status = found
+        if status == "archived":
+            raise AppError(409, "conflict", "An archived plan cannot be changed")
+        plan = await self.uow.training.get_plan(user.id, plan_id)
+        sessions = plan.sessions  # type: ignore[union-attr]
+        if any(x.weekday == weekday and x.id != session_id for x in sessions):
+            raise AppError(409, "conflict", "Another session of this plan is already on that weekday")
+        await self.uow.training.set_session_weekday(session_id, weekday)
+        await self.uow.commit()
+        plan = await self.uow.training.get_plan(user.id, plan_id)
+        return serialize_session(next(x for x in plan.sessions if x.id == session_id))  # type: ignore[union-attr]
+
     # ------------------------------------------------------------------ planned exercises (FR-P7, FR-A1)
     async def _editable(self, user: UserRecord, session_exercise_id: int) -> SessionExerciseContext:
         """A planned exercise of the user's draft or active plan; archived plans are history."""
