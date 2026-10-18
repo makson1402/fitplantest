@@ -9,6 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.training import BodyMetrics
 from app.repositories.metrics import BodyMetricsRecord
+from app.repositories.sync import BODY_METRICS, SyncPosition
+from app.repositories.sync_sql import after
 
 
 def _record(r: BodyMetrics) -> BodyMetricsRecord:
@@ -56,6 +58,15 @@ class SqlBodyMetricsRepository:
         rows = await self.session.scalars(select(BodyMetrics).where(*conditions)
                                           .order_by(BodyMetrics.measured_on.desc(), BodyMetrics.id.desc())
                                           .execution_options(populate_existing=True))
+        return [_record(r) for r in rows]
+
+    async def changed_since(self, user_id: int, position: SyncPosition | None,
+                            limit: int) -> list[BodyMetricsRecord]:
+        rows = await self.session.scalars(
+            select(BodyMetrics).where(BodyMetrics.user_id == user_id,
+                                      after(BodyMetrics.updated_at, BodyMetrics.id, position, BODY_METRICS))
+            .order_by(BodyMetrics.updated_at, BodyMetrics.id).limit(limit)
+            .execution_options(populate_existing=True))
         return [_record(r) for r in rows]
 
     async def soft_delete(self, user_id: int, record_id: int, at: datetime) -> bool:

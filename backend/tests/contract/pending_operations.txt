@@ -12,6 +12,4 @@ getRecognition
 resetPassword
 signInWithApple
 signInWithGoogle
-syncPull
-syncPush
 updateRecognitionItem
